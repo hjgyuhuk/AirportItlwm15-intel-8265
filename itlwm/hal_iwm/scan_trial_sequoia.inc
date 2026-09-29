@@ -1,0 +1,147 @@
+bool ItlIwm::iwm_scan_trial_command_allowed(iwm_softc *sc, const iwm_host_cmd *command)
+{
+    const auto &result = nativeFirmwareDiagnostics;
+    if (!nativeFirmwareTrial || nativeNet80211Attached || result.stage != IwmFirmwareStage::Scan ||
+        result.configurationResult || result.scanPreflightResult || nativeCalibrationActive ||
+        sc->sc_uc_current != IWM_UCODE_TYPE_REGULAR || !command || command->len[1] ||
+        !command->data[0]) return false;
+    const auto *phase = nativeNvmDiagnostics.phase;
+    if (!strcmp(phase, "scan-dqa") && command->id == iwm_cmd_id(IWM_DQA_ENABLE_CMD, IWM_DATA_PATH_GROUP, 0)) {
+        const iwm_dqa_enable_cmd expected = {htole32(IWM_DQA_CMD_QUEUE)};
+        return !command->flags && command->len[0] == sizeof(expected) &&
+            !memcmp(command->data[0], &expected, sizeof(expected));
+    }
+    if (!strcmp(phase, "scan-aux") && result.scanDqaResult == 0) {
+        if (command->id == IWM_SCD_QUEUE_CFG) {
+            iwm_scd_txq_cfg_cmd expected = {};
+            expected.sta_id = IWM_AUX_STA_ID;
+            expected.tid = IWM_MAX_TID_COUNT;
+            expected.scd_queue = IWM_DQA_AUX_QUEUE;
+            expected.enable = IWM_SCD_CFG_ENABLE_QUEUE;
+            expected.tx_fifo = IWM_TX_FIFO_MCAST;
+            expected.window = IWM_FRAME_LIMIT;
+            return !command->flags && command->len[0] == sizeof(expected) &&
+                !memcmp(command->data[0], &expected, sizeof(expected));
+        }
+        if (command->id == IWM_ADD_STA) {
+            iwm_add_sta_cmd_v7 expected = {};
+            expected.tid_disable_tx = htole16(0xffff);
+            expected.mac_id_n_color = htole32(IWM_FW_CMD_ID_AND_COLOR(IWM_MAC_INDEX_AUX, 0));
+            expected.sta_id = IWM_AUX_STA_ID;
+            expected.tfd_queue_msk = htole32(1 << IWM_DQA_AUX_QUEUE);
+            return command->flags == IWM_CMD_WANT_RESP && command->len[0] == sizeof(expected) &&
+                !memcmp(command->data[0], &expected, sizeof(expected));
+        }
+    }
+    return !strcmp(phase, "scan-submit") && result.scanAuxResult == 0 &&
+        command->id == IWM_SCAN_OFFLOAD_REQUEST_CMD && !command->flags &&
+        nativePassiveRequest && command->data[0] == nativePassiveRequest &&
+        command->len[0] == nativePassiveRequestBytes;
+}
+
+int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
+{
+    if (!getMainWorkLoop()->inGate() || getMainWorkLoop()->onThread() || !nativeFirmwareTrial ||
+        nativeNet80211Attached || nativeFirmwareDiagnostics.stage != IwmFirmwareStage::Scan ||
+        nativeFirmwareDiagnostics.configurationResult ||
+        nativeFirmwareDiagnostics.scanPreflightResult != UINT32_MAX) return EPERM;
+    auto &result = nativeFirmwareDiagnostics;
+    auto &phase = nativeNvmDiagnostics.phase;
+    IwmTrial::PassivePlan plan;
+    phase = "scan-preflight";
+    // This first radio trial is specifically firmware 17's LMAC + DQA + v7
+    // station ABI. Never send it to UMAC, IWX, MQ RX or another station format.
+    if (sc->sc_device_family != IWM_DEVICE_FAMILY_7000 || sc->sc_mqrx_supported ||
+        !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DQA_SUPPORT) ||
+        isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_UMAC_SCAN) ||
+        isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE) || sc->cmdqid != IWM_DQA_CMD_QUEUE ||
+        !result.phy.complete() || !commandTransportReady || (sc->sc_flags & IWM_FLAG_RFKILL)) {
+        result.scanPreflightResult = ENOTSUP;
+        return ENOTSUP;
+    }
+    plan.capacity = sc->sc_capa_n_scan_channels;
+    plan.txAnt = iwm_fw_valid_tx_ant(sc);
+    plan.rxAnt = iwm_fw_valid_rx_ant(sc);
+    memcpy(plan.source, sc->sc_nvm.hw_addr, sizeof(plan.source));
+    for (size_t i = 1; i < nitems(sc->sc_ic.ic_channels); ++i) {
+        const auto &channel = sc->sc_ic.ic_channels[i];
+        if (!channel.ic_freq || !channel.ic_flags) continue;
+        if (plan.count == nitems(plan.channels) || !iwm_is_valid_channel(i)) {
+            result.scanPreflightResult = EINVAL;
+            return EINVAL;
+        }
+        plan.channels[plan.count++] = static_cast<uint16_t>(i);
+    }
+    const size_t bytes = IwmTrial::passiveRequestSize(plan);
+    if (!bytes || plan.count != result.phy.coveredChannels) {
+        result.scanPreflightResult = EINVAL;
+        return EINVAL;
+    }
+    auto *request = malloc(bytes, M_DEVBUF, M_NOWAIT);
+    if (!request) { result.scanPreflightResult = ENOMEM; return ENOMEM; }
+    if (!IwmTrial::buildPassiveRequest(plan, request, bytes)) {
+        ::free(request);
+        result.scanPreflightResult = EINVAL;
+        return EINVAL;
+    }
+    result.scanPreflightResult = 0;
+    phase = "scan-dqa";
+    int error = iwm_send_dqa_cmd(sc);
+    result.scanDqaResult = error;
+    if (!error) {
+        phase = "scan-aux";
+        const uint64_t epoch = commandEpoch;
+        if (!iwm_nic_lock(sc)) error = EBUSY;
+        else {
+            error = iwm_add_aux_sta(sc);
+            // A reset clears the NIC lock count while the command sleeps.
+            if (commandEpoch == epoch) iwm_nic_unlock(sc);
+            else error = ENXIO;
+        }
+        result.scanAuxResult = error;
+    }
+    if (!error) {
+        phase = "scan-submit";
+        const auto token = nativePassiveScan.begin(plan.channels, plan.count);
+        if (!token) error = EBUSY;
+        else {
+            iwm_host_cmd command = {};
+            command.id = IWM_SCAN_OFFLOAD_REQUEST_CMD;
+            command.len[0] = static_cast<uint16_t>(bytes);
+            command.data[0] = request;
+            nativePassiveRequest = request;
+            nativePassiveRequestBytes = bytes;
+            error = iwm_send_cmd(sc, &command);
+            nativePassiveRequest = nullptr;
+            nativePassiveRequestBytes = 0;
+            nativePassiveScan.submitted(token, error ? ItlScan::Submission::Indeterminate : ItlScan::Submission::Accepted);
+        }
+        result.scanSubmitResult = error;
+        if (!error) {
+            phase = "scan-wait";
+            error = iwm_wait_status(&nativePassiveDone, 1, &nativePassiveDone, ItlScan::IwmPassiveTrial::WaitSeconds);
+            if (error == ETIMEDOUT) nativePassiveScan.timeout(token);
+            ItlScan::Completion completion;
+            if (!error && (!nativePassiveScan.completion(completion) || !completion.accepted ||
+                completion.outcome != ItlScan::Outcome::Success || !nativePassiveScan.completeCoverage())) error = EIO;
+            result.scanWaitResult = error;
+        }
+    }
+    ::free(request);
+    // The owning orchestrator always resets hardware, even on timeout. An
+    // abort ACK alone cannot release this scan's DMA/RX ownership.
+    return error;
+}
+
+void ItlIwm::iwm_scan_trial_rx(uint16_t code, const void *payload, size_t size)
+{
+    if (nativeFirmwareDiagnostics.stage != IwmFirmwareStage::Scan) return;
+    if (code == IWM_REPLY_RX_PHY_CMD) nativePassiveScan.rxPhy(payload, size);
+    else if (code == IWM_REPLY_RX_MPDU_CMD) nativePassiveScan.rxMpdu(payload, size);
+    else if (code == IWM_SCAN_OFFLOAD_COMPLETE || code == IWM_SCAN_ITERATION_COMPLETE) {
+        if (nativePassiveScan.notification(code, payload, size)) {
+            nativePassiveDone = 1;
+            getMainCommandGate()->commandWakeup(&nativePassiveDone, false);
+        }
+    }
+}

@@ -1,0 +1,26 @@
+name: Sequoia release build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned SDK
+        run: |
+          git clone https://github.com/acidanthera/MacKernelSDK.git MacKernelSDK
+          git -C MacKernelSDK checkout 05094e5e88cec7caedbfb35e8449ed0db94bf95b
+          git -C MacKernelSDK apply ../scripts/sequoia/MacKernelSDK-pexpert.patch
+      - name: Build release candidate
+        run: /usr/bin/python3 scripts/sequoia/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AirportItlwm-Sequoia-0.1.0-beta.1-RELEASE
+          path: |
+            build/Sequoia-0.1.0-beta.1-RELEASE/AirportItlwmSequoiaNative.kext
+            build/Sequoia-0.1.0-beta.1-RELEASE/release-build.json

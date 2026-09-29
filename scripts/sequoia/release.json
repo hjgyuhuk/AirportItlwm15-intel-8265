@@ -1,0 +1,17 @@
+{
+  "release_version": "0.1.0-beta.1",
+  "bundle_version": "0.1.0b1",
+  "configuration": "Release",
+  "identifier": "com.zxystd.AirportItlwm.SequoiaNative",
+  "executable": "AirportItlwmSequoiaNative",
+  "required_build": "24H23",
+  "required_kernel_uuid": "B7B3E8AD-9CA6-382C-BD56-8D52139342A4",
+  "required_boot_args": [
+    "itlwm_native=1",
+    "itlwm_bsd_owner=skywalk"
+  ],
+  "tested_adapter": "AX210",
+  "pci_match": "0x31668086 0x27258086",
+  "base_development_revision": "r260",
+  "prerelease": true
+}

@@ -1,0 +1,16 @@
+diff --git a/Headers/pexpert/pexpert.h b/Headers/pexpert/pexpert.h
+index 3d31fa9..fd05050 100644
+--- a/Headers/pexpert/pexpert.h
++++ b/Headers/pexpert/pexpert.h
+@@ -266,6 +266,11 @@ extern boolean_t PE_parse_boot_argn(
+ 	void            *arg_ptr,
+ 	int                     max_arg);
+ 
++extern boolean_t PE_parse_boot_arg_str(
++	const char      *arg_string,
++	char            *arg_ptr,
++	int                     max_arg);
++
+ 
+ extern boolean_t PE_get_default(
+ 	const char      *property_name,

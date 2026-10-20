@@ -1,14 +1,19 @@
-// The 8000 family (8260/8265, firmware 36) numbers its NVM sections in a
-// 0x5A00-based id space, while the 7000 family (7260/7265, firmware 17)
-// uses the section id verbatim. Measured on a 8265 with the NVM probe:
-// 1->0x5A01, 3->0x5A03, 4->0x5A04, 5->0x5A05, 10->0x5A0A, 12->0x5A0C, so
-// the mapping is a fixed base rather than a per-section table. The 9000
-// family keeps its own space and is not remapped.
-static inline uint16_t iwm_nvm_wire_section(struct iwm_softc *sc, uint16_t section)
+// The 8000 family firmware relabels the section id in its answer: a request
+// for section N comes back tagged 0x5A00+N, while the payload is the
+// content of the section that was actually requested. Measured on a 8265:
+// requesting 1, 3, 4, 5, 8, 10, 11 and 12 returns the 7000-style sections
+// (46 channels parse out of section 3), tagged 0x5A01, 0x5A03, 0x5A04,
+// 0x5A05, 0x5A08, 0x5A0A, 0x5A0B and 0x5A0C.
+//
+// The relabelling is a property of the answer, not of the request: asking
+// for 0x5A03 directly returns a different, empty section. So the request
+// keeps the plain section id and only the answer's tag is interpreted.
+static inline uint16_t iwm_nvm_answered_section(struct iwm_softc *sc, uint16_t section, uint16_t answered)
 {
-    if (sc && sc->sc_device_family == IWM_DEVICE_FAMILY_8000)
-        return uint16_t(section + 0x5A00);
-    return section;
+    if (answered == section) return section;
+    if (sc && sc->sc_device_family == IWM_DEVICE_FAMILY_8000 &&
+        answered == uint16_t(section + 0x5A00)) return section;
+    return 0xFFFF;
 }
 
 int ItlIwm::iwm_nvm_read_chunk(struct iwm_softc *sc, uint16_t section,
@@ -20,11 +25,10 @@ int ItlIwm::iwm_nvm_read_chunk(struct iwm_softc *sc, uint16_t section,
     *len = 0;
     auto *diagnostics = isHardwareTrial() ? &nativeNvmDiagnostics : nullptr;
     if (diagnostics) diagnostics->beginRead(section, offset, length);
-    const uint16_t wireSection = iwm_nvm_wire_section(sc, section);
     struct iwm_nvm_access_cmd request = {};
     request.offset = htole16(offset);
     request.length = htole16(length);
-    request.type = htole16(wireSection);
+    request.type = htole16(section);
     request.op_code = IWM_NVM_READ_OPCODE;
     struct iwm_host_cmd command = {};
     command.id = IWM_NVM_ACCESS_CMD;
@@ -65,14 +69,13 @@ int ItlIwm::iwm_nvm_read_chunk(struct iwm_softc *sc, uint16_t section,
             // Reference: Linux v6.12 iwl_nvm_read_chunk (NOT_VALID_ADDRESS).
             error = offset && le16toh(response->status) == 1 ? 0 : ENOENT;
         } else if (le16toh(response->offset) != offset ||
-            // The firmware answers with the id of the section it actually
-            // served, which is the mapped id on the 8000 family.
-            (le16toh(response->type) != wireSection &&
-             !(diagnostics && diagnostics->allowSectionTypeMismatch)) ||
+            // The 8000 family relabels the section in its answer; accept the
+            // relabelling, reject anything else.
+            iwm_nvm_answered_section(sc, section, le16toh(response->type)) == 0xFFFF ||
             bytes > length || bytes > iwm_rx_packet_payload_len(packet) - sizeof(*response)) {
             error = EIO;
         } else {
-            if (diagnostics && diagnostics->allowSectionTypeMismatch)
+            if (diagnostics)
                 diagnostics->recordSectionType(section, le16toh(response->type), bytes);
             memcpy(data + offset, response->data, bytes);
             *len = static_cast<uint16_t>(bytes);

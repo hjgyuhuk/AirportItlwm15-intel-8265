@@ -35,11 +35,6 @@ struct IwmNvmDiagnostics {
     uint16_t sectionLengthMap[16] = {};
     uint32_t sectionTypeMapValid = 0;
 
-    // Probe build: set only by the NVM trial, so the diagnostic run can
-    // accept a firmware that answers with its own section id while the
-    // production path keeps the strict "same id" rule.
-    bool allowSectionTypeMismatch = false;
-
     // Probe build: the first words of the regulatory and PHY SKU sections.
     // These hold the channel flags and the band capabilities, never a MAC
     // address or any other identifier.

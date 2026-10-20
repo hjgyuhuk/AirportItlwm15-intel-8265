@@ -34,10 +34,6 @@ bool ItlIwm::attachForNvmTrial(IOPCIDevice *device)
         (deviceId != 0x3166 && deviceId != 0x24FD) || pci.pa_tag || nativeDetached)
         return false;
     nativeNvmTrial = true;
-    // Probe build: the 8000-family firmware answers with its own section id
-    // space. The diagnostic run records the mapping instead of rejecting the
-    // answer, so one boot can recover the whole table.
-    nativeNvmDiagnostics.allowSectionTypeMismatch = true;
     return attach(device);
 }
 
@@ -52,10 +48,6 @@ bool ItlIwm::attachForFirmwareTrial(IOPCIDevice *device)
         nativeDetached || nativeNvmTrial)
         return false;
     nativeFirmwareTrial = true;
-    // Probe build: record the section id mapping for the firmware dialogue
-    // run as well, so the calibration and scan stages can be attributed to a
-    // specific section.
-    nativeNvmDiagnostics.allowSectionTypeMismatch = true;
     return attach(device);
 }
 #endif

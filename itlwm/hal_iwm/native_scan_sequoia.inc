@@ -21,8 +21,8 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         !(sc->sc_ic.ic_ac.ac_if.if_flags & IFF_RUNNING) ||
         (!associated && sc->sc_ic.ic_state != IEEE80211_S_INIT) ||
         (associated && (sc->sc_ic.ic_state != IEEE80211_S_RUN || !sc->sc_ic.ic_bss)) ||
-        (sc->sc_flags & (IWM_FLAG_SCANNING | IWM_FLAG_BGSCAN | IWM_FLAG_RFKILL)) ||
-        isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_UMAC_SCAN)) return EOPNOTSUPP;
+        (sc->sc_flags & (IWM_FLAG_SCANNING | IWM_FLAG_BGSCAN | IWM_FLAG_RFKILL)))
+        return EOPNOTSUPP;
     IwmTrial::PassivePlan wire;
     wire.count = plan.channelCount;
     wire.capacity = sc->sc_capa_n_scan_channels;

@@ -3,8 +3,10 @@
 int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
 {
     auto *loop = getMainWorkLoop();
-    if (!loop || !getMainCommandGate() || !hcmd)
+    if (!loop || !getMainCommandGate() || !hcmd) {
+        if (isHardwareTrial()) nativeNvmDiagnostics.commandReject = 1;
         return ENXIO;
+    }
     if (!loop->inGate()) {
         return loop->runAction([](OSObject *owner, void *softc, void *command, void *, void *) -> IOReturn {
             return static_cast<ItlIwm *>(owner)->iwm_send_cmd(
@@ -14,8 +16,12 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
     const bool async = (hcmd->flags & IWM_CMD_ASYNC) != 0;
     const bool response = (hcmd->flags & IWM_CMD_WANT_RESP) != 0;
     hcmd->resp_pkt = nullptr;
-    if (isHardwareTrial())
+    if (isHardwareTrial()) {
         nativeNvmDiagnostics.beginCommand(hcmd->id);
+        nativeNvmDiagnostics.driverFlags = sc->sc_flags;
+        nativeNvmDiagnostics.transportReady = commandTransportReady ? 1 : 0;
+        nativeNvmDiagnostics.commandReject = 0;
+    }
     if (nativeNvmTrial) {
         // The hardware trial cannot submit scan, calibration, join, paging,
         // key or NVM-write commands even if a future caller reaches this path.
@@ -34,8 +40,10 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
                      hcmd->resp_pkt_len > IWM_CMD_RESP_MAX)) ||
         sc->cmdqid < 0 || sc->cmdqid >= nitems(sc->txq))
         return EINVAL;
-    if (!commandTransportReady || (sc->sc_flags & (IWM_FLAG_SHUTDOWN | IWM_FLAG_HW_ERR)))
+    if (!commandTransportReady || (sc->sc_flags & (IWM_FLAG_SHUTDOWN | IWM_FLAG_HW_ERR))) {
+        if (isHardwareTrial()) nativeNvmDiagnostics.commandReject = 2;
         return ENXIO;
+    }
 
     auto &ring = sc->txq[sc->cmdqid];
     const auto index = ring.cur;
@@ -144,6 +152,7 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
     allocated = nullptr;
     if (!commandSlots.publish(token)) {
         /* Do not panic if a reset raced publication of this slot. */
+        if (isHardwareTrial()) nativeNvmDiagnostics.commandReject = 3;
         error = ENXIO;
         if (txdata->m) {
             mbuf_freem(txdata->m);
@@ -185,8 +194,10 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
             }
         }
     }
-    if (!commandSlots.consume(token, error))
+    if (!commandSlots.consume(token, error)) {
+        if (isHardwareTrial()) nativeNvmDiagnostics.commandReject = 4;
         return ENXIO; // A hardware reset invalidated this host token.
+    }
     if (!error) {
         hcmd->resp_pkt = reinterpret_cast<iwm_rx_packet *>(sc->sc_cmd_resp_pkt[index]);
     } else {

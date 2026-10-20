@@ -155,6 +155,9 @@ bool AirportItlwmSequoiaFirmwareTrial::recordDiagnostics()
         {"SequoiaFirmwareErrorSequence", detail.firmwareErrorSequence},
         {"SequoiaFirmwareTimeoutFlags", detail.timeoutFlags},
         {"SequoiaFirmwareTimeoutQueued", detail.timeoutQueued},
+        {"SequoiaFirmwareCommandReject", detail.commandReject},
+        {"SequoiaFirmwareDriverFlags", detail.driverFlags},
+        {"SequoiaFirmwareTransportReady", detail.transportReady},
     };
     for (const auto &field : fields) recorded = setProperty(field.name, field.value, 32) && recorded;
     recorded = setProperty("SequoiaFirmwareRegulatoryWords", detail.regulatoryWords) && recorded;

@@ -60,6 +60,11 @@ struct IwmNvmDiagnostics {
     char ucodeApiBits[96] = {};
     char enabledCapaBits[96] = {};
     uint32_t scanPreflightMask = 0;
+    // Probe build: why the last command was refused, and the driver flags and
+    // transport state it was refused under.
+    uint32_t commandReject = 0;
+    uint32_t driverFlags = 0;
+    uint32_t transportReady = 0;
 
     void recordSectionType(uint16_t requested, uint16_t returned, uint16_t length)
     {

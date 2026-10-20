@@ -32,6 +32,7 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         size_t kept = 0;
         for (size_t i = 0; i < plan.channelCount; ++i) {
             const auto channel = plan.channels[i];
+            if (!iwm_channel_is_valid(sc, channel)) continue;
             if (iwm_channel_id_to_papd(channel) == 0xffff) continue;
             nativeScanUsablePlan.channels[kept] = channel;
             nativeScanUsablePlan.probes[kept] = plan.probes[i];
@@ -40,6 +41,9 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         nativeScanUsablePlan.channelCount = kept;
     }
     const auto &usable = nativeScanUsablePlan;
+    nativeScanUsableCount = 0;
+    for (size_t i = 0; i < usable.channelCount && i < 64; ++i)
+        nativeScanUsableList[nativeScanUsableCount++] = usable.channels[i];
     IwmTrial::PassivePlan wire;
     wire.count = usable.channelCount;
     wire.capacity = sc->sc_capa_n_scan_channels;
@@ -99,7 +103,9 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     command.id = IWM_SCAN_OFFLOAD_REQUEST_CMD;
     command.len[0] = static_cast<uint16_t>(size);
     command.data[0] = request;
+    nativeScanSubmitReject = 0;
     int error = iwm_send_cmd(sc, &command);
+    if (error) nativeScanSubmitReject = nativeNvmDiagnostics.commandReject;
     ::free(request);
     sink.submitted(sink.context, error ? ItlScan::Submission::Indeterminate : ItlScan::Submission::Accepted);
     if (!error) {

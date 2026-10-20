@@ -293,6 +293,20 @@ void AirportItlwm::publishNativeScanDiagnostics()
     provider->setProperty("ItlwmNativeScanTxAnt", d.nativeScanTxAnt, 32);
     provider->setProperty("ItlwmNativeScanRxAnt", d.nativeScanRxAnt, 32);
     provider->setProperty("ItlwmNativeScanSourceValid", d.nativeScanSourceValid, 32);
+    provider->setProperty("ItlwmNativeScanUsableCount", d.nativeScanUsableCount, 32);
+    provider->setProperty("ItlwmNativeScanSubmitReject", d.nativeScanSubmitReject, 32);
+    {
+        char list[192] = {};
+        size_t used = 0;
+        for (uint32_t i = 0; i < d.nativeScanUsableCount && used + 6 < sizeof(list); ++i) {
+            const int written = snprintf(list + used, sizeof(list) - used, "%u%c",
+                d.nativeScanUsableList[i], i + 1 < d.nativeScanUsableCount ? ',' : 0);
+            if (written < 0) break;
+            used += static_cast<size_t>(written) < sizeof(list) - used
+                ? static_cast<size_t>(written) : sizeof(list) - used - 1;
+        }
+        provider->setProperty("ItlwmNativeScanUsableList", list);
+    }
     {
         char list[192] = {};
         size_t used = 0;

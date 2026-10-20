@@ -374,6 +374,10 @@ void AirportItlwm::runNativeScan()
             nativeScan.diagnostics.nativeScanTxAnt = hal->nativeScanTxAnt;
             nativeScan.diagnostics.nativeScanRxAnt = hal->nativeScanRxAnt;
             nativeScan.diagnostics.nativeScanSourceValid = hal->nativeScanSourceValid;
+            nativeScan.diagnostics.nativeScanUsableCount = hal->nativeScanUsableCount;
+            memcpy(nativeScan.diagnostics.nativeScanUsableList,
+                hal->nativeScanUsableList, sizeof(nativeScan.diagnostics.nativeScanUsableList));
+            nativeScan.diagnostics.nativeScanSubmitReject = hal->nativeScanSubmitReject;
             memcpy(nativeScan.diagnostics.nativeScanChannelList,
                 hal->nativeScanChannelList, sizeof(nativeScan.diagnostics.nativeScanChannelList));
             setProperty("SequoiaNativeScanError", static_cast<uint64_t>(error), 32);

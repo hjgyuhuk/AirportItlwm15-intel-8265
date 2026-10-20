@@ -1,5 +1,6 @@
 #include <Airport/SequoiaNativeScan.h>
 #include <HAL/ItlNativeScan.h>
+#include <HAL/IwmNvmDiagnostics.h>
 #include <cassert>
 #include <cerrno>
 #include <cstdio>
@@ -187,6 +188,10 @@ public:
     uint32_t nativeScanWireCount = 0, nativeScanWireCapacity = 0;
     uint32_t nativeScanTxAnt = 0, nativeScanRxAnt = 0;
     uint32_t nativeScanSourceValid = 0;
+    IwmNvmDiagnostics nativeNvmDiagnostics;
+    uint32_t nativeScanUsableCount = 0;
+    uint16_t nativeScanUsableList[64] = {};
+    uint32_t nativeScanSubmitReject = 0;
     uint16_t nativeScanChannelList[64] = {};
     bool nativeScanPassthrough = false;
     int nativeScanDone = 0, nativeScanCancel = 0;

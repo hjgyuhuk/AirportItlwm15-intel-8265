@@ -50,10 +50,18 @@ int ItlIwm::iwm_nvm_read_chunk(struct iwm_softc *sc, uint16_t section,
             // Intel's status 1 on a later 2 KiB boundary is end-of-section.
             // Reference: Linux v6.12 iwl_nvm_read_chunk (NOT_VALID_ADDRESS).
             error = offset && le16toh(response->status) == 1 ? 0 : ENOENT;
-        } else if (le16toh(response->offset) != offset || le16toh(response->type) != section ||
+        } else if (le16toh(response->offset) != offset ||
+            // Probe build: the firmware answers with its own section id, and
+            // that id space differs between firmware generations. The mapping
+            // is recorded for every section, and the strict "same id" rule is
+            // only lifted for the explicit NVM probe run.
+            (le16toh(response->type) != section &&
+             !(diagnostics && diagnostics->allowSectionTypeMismatch)) ||
             bytes > length || bytes > iwm_rx_packet_payload_len(packet) - sizeof(*response)) {
             error = EIO;
         } else {
+            if (diagnostics && diagnostics->allowSectionTypeMismatch)
+                diagnostics->recordSectionType(section, le16toh(response->type), bytes);
             memcpy(data + offset, response->data, bytes);
             *len = static_cast<uint16_t>(bytes);
             if (diagnostics) {

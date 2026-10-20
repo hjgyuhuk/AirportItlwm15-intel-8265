@@ -23,6 +23,27 @@ struct IwmNvmDiagnostics {
     uint32_t firmwareErrorCommand = UINT32_MAX, firmwareErrorSequence = UINT32_MAX;
     uint32_t timeoutFlags = UINT32_MAX, timeoutQueued = UINT32_MAX;
 
+    // Probe build: the section id space is not the same across firmware
+    // generations. Record what the firmware answered for every requested
+    // section so the mapping can be recovered without guessing. Only the
+    // identifiers and the returned lengths are kept, never section contents.
+    uint16_t sectionTypeMap[16] = {};
+    uint16_t sectionLengthMap[16] = {};
+    uint32_t sectionTypeMapValid = 0;
+
+    // Probe build: set only by the NVM trial, so the diagnostic run can
+    // accept a firmware that answers with its own section id while the
+    // production path keeps the strict "same id" rule.
+    bool allowSectionTypeMismatch = false;
+
+    void recordSectionType(uint16_t requested, uint16_t returned, uint16_t length)
+    {
+        if (requested >= 16) return;
+        sectionTypeMap[requested] = returned;
+        sectionLengthMap[requested] = length;
+        sectionTypeMapValid |= uint32_t(1) << requested;
+    }
+
     static void increment(uint32_t &value) { if (value != UINT32_MAX) ++value; }
 
     void beginCommand(uint32_t command)

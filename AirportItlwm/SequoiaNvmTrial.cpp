@@ -69,6 +69,26 @@ static bool recordNvmDiagnostics(IOService *service, const IwmNvmDiagnostics &da
     };
     for (const auto &field : fields)
         recorded = service->setProperty(field.name, field.value, 32) && recorded;
+    // Probe build: publish the firmware's own section id for every requested
+    // section, so the generation-specific mapping can be recovered from one
+    // run instead of being guessed at.
+    OSDictionary *types = OSDictionary::withCapacity(16);
+    OSDictionary *lengths = OSDictionary::withCapacity(16);
+    if (types && lengths) {
+        for (unsigned i = 0; i < 16; ++i) {
+            if (!(data.sectionTypeMapValid & (uint32_t(1) << i))) continue;
+            char key[8];
+            snprintf(key, sizeof(key), "%u", i);
+            types->setObject(OSString::withCString(key),
+                OSNumber::withNumber(data.sectionTypeMap[i], 32));
+            lengths->setObject(OSString::withCString(key),
+                OSNumber::withNumber(data.sectionLengthMap[i], 32));
+        }
+        recorded = service->setProperty("SequoiaTrialNvmTypeMap", types) && recorded;
+        recorded = service->setProperty("SequoiaTrialNvmLengthMap", lengths) && recorded;
+        types->release();
+        lengths->release();
+    }
     return recorded;
 }
 

@@ -69,25 +69,34 @@ static bool buildPassiveRequest(const PassivePlan &plan, void *output, size_t by
         (has5 ? IWM_PHY_BAND_5 : 0));
     auto *probe = reinterpret_cast<iwm_scan_probe_req_v1 *>(request->data +
         plan.capacity * sizeof(*channels));
+    // The probe request is laid out the way the firmware expects: a MAC header
+    // of 26 bytes, then an empty SSID element the hardware fills in, then the
+    // per band rate sets, then the data both bands share. The firmware places
+    // the SSID element itself, so it has to be told where the header ends.
     probe->buf[0] = 0x40;
+    probe->buf[1] = 0x00;
     memset(probe->buf + 4, 0xff, 6);
     memcpy(probe->buf + 10, plan.source, 6);
     memset(probe->buf + 16, 0xff, 6);
+    probe->mac_header.offset = 0;
     probe->mac_header.len = htole16(26); // Includes a zero-length SSID IE.
+    size_t offset = 26;
+    probe->buf[offset++] = 0;             // IEEE80211_ELEMID_SSID
+    probe->buf[offset++] = 0;             // Empty; the hardware inserts it.
     // Standard legacy rates, independent of the unattached ic_sup_rates.
     const uint8_t rates24[] = {1, 8, 0x82, 0x84, 0x8b, 0x96, 12, 18, 24, 36, 50, 4, 48, 72, 96, 108};
     const uint8_t rates5[] = {1, 8, 0x8c, 18, 0x98, 36, 0xb0, 72, 96, 108};
-    size_t offset = 26;
     for (unsigned band = 0; band < 2; ++band) {
-        probe->band_data[band].offset = htole16(offset);
         const bool included = band ? has5 : has24;
         if (!included) continue;
+        probe->band_data[band].offset = htole16(offset);
         const auto length = band ? sizeof(rates5) : sizeof(rates24);
         memcpy(probe->buf + offset, band ? rates5 : rates24, length);
         probe->band_data[band].len = htole16(length);
         offset += length;
     }
     probe->common_data.offset = htole16(offset);
+    probe->common_data.len = htole16(0);
     return true;
 }
 

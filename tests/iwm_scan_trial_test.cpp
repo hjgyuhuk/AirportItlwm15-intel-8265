@@ -53,9 +53,12 @@ static void request()
     for (size_t i = 2; i < 40; ++i) assert(channels[i].channel_num == 0 && channels[i].flags == 0);
     const auto *probe = reinterpret_cast<const iwm_scan_probe_req_v1 *>(command->data + 40 * sizeof(*channels));
     assert(probe->mac_header.len == 26 && probe->buf[0] == 0x40 && probe->buf[10] == 2);
-    assert(probe->band_data[0].offset == 26 && probe->band_data[0].len == 16);
-    assert(probe->band_data[1].offset == 42 && probe->band_data[1].len == 10);
-    assert(probe->common_data.offset == 52 && !probe->common_data.len);
+    // The hardware fills in the SSID element, so the firmware has to be able
+    // to find it right after the MAC header.
+    assert(probe->buf[26] == 0 && probe->buf[27] == 0);
+    assert(probe->band_data[0].offset == 28 && probe->band_data[0].len == 16);
+    assert(probe->band_data[1].offset == 44 && probe->band_data[1].len == 10);
+    assert(probe->common_data.offset == 54 && !probe->common_data.len);
     const auto good = bytes;
     for (unsigned fault = 0; fault < 10; ++fault) {
         auto bad = plan;

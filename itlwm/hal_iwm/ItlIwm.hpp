@@ -379,9 +379,6 @@ public:
     ItlScan::NativeSink nativeScanSink;
     int nativeScanDone = 0, nativeScanCancel = 0;
     bool nativeScanPassthrough = false;
-    // Which request flavor the last scan used: 0 = the LMAC request this
-    // tree builds, 1 = the UMAC request the firmware asks for.
-    uint32_t nativeScanUmac = 0;
     IwmOperationOwner nativeFirmwareOwner;
     class FirmwareLease {
     public:

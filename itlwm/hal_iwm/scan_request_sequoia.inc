@@ -7,6 +7,10 @@ struct PassivePlan {
     uint16_t channels[ItlScan::IwmPassiveTrial::MaxChannels] = {};
     size_t count = 0, capacity = 0;
     uint8_t source[6] = {}, txAnt = 0, rxAnt = 0;
+    // The inherited PHY DB index table cannot calibrate channel 144 on the
+    // 7000 family, so that family leaves it out of the request. The 8000
+    // family has its own table and keeps the channel.
+    bool skipChannel144 = false;
 };
 
 static size_t passiveRequestSize(const PassivePlan &plan)
@@ -16,7 +20,7 @@ static size_t passiveRequestSize(const PassivePlan &plan)
         !plan.rxAnt || (plan.rxAnt & ~7)) return 0;
     for (size_t i = 0; i < plan.count; ++i) {
         const auto channel = plan.channels[i];
-        if (!channel || channel > 196 || channel == 144) return 0;
+        if (!channel || channel > 196 || (plan.skipChannel144 && channel == 144)) return 0;
         for (size_t j = 0; j < i; ++j)
             if (channel == plan.channels[j]) return 0;
     }

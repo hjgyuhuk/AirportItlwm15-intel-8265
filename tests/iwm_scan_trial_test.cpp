@@ -61,7 +61,9 @@ static void request()
         if (fault == 1) bad.capacity = 1;
         if (fault == 2) bad.capacity = ItlScan::IwmPassiveTrial::MaxChannels + 1;
         if (fault == 3) bad.channels[1] = 1;
-        if (fault == 4) bad.channels[1] = 144;
+        // Channel 144 is only left out on the 7000 family, which is what the
+        // flag stands for.
+        if (fault == 4) { bad.skipChannel144 = true; bad.channels[1] = 144; }
         if (fault == 5) bad.channels[1] = 0;
         if (fault == 6) bad.channels[1] = 197;
         if (fault == 7) bad.source[0] = 1;
@@ -506,7 +508,9 @@ static void sequence()
         if (fault == 2) sc.sc_enabled_capa[1] = 0; // No DQA
         if (fault == 3) sc.sc_flags = IWM_FLAG_RFKILL;
         if (fault == 4) sc.sc_capa_n_scan_channels = 1;
-        if (fault == 5) sc.sc_ic.ic_channels[144] = {5720, 1};
+        // The 7000 family leaves channel 144 out, so a radio that offers it
+        // is not a rejection any more. An empty capacity is.
+        if (fault == 5) sc.sc_capa_n_scan_channels = 0;
         if (fault == 6) sc.sc_nvm.hw_addr[0] = 1;
         failAllocation = fault == 7;
         assert(driver.iwm_passive_scan_trial(&sc) != 0 && !driver.steps && !driver.locks);

@@ -4,7 +4,7 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
 {
     auto *loop = getMainWorkLoop();
     if (!loop || !getMainCommandGate() || !hcmd) {
-        if (isHardwareTrial()) nativeNvmDiagnostics.commandReject = 1;
+        nativeNvmDiagnostics.commandReject = 1;
         return ENXIO;
     }
     if (!loop->inGate()) {
@@ -16,7 +16,7 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
     const bool async = (hcmd->flags & IWM_CMD_ASYNC) != 0;
     const bool response = (hcmd->flags & IWM_CMD_WANT_RESP) != 0;
     hcmd->resp_pkt = nullptr;
-    if (isHardwareTrial()) {
+    {
         nativeNvmDiagnostics.beginCommand(hcmd->id);
         nativeNvmDiagnostics.driverFlags = sc->sc_flags;
         nativeNvmDiagnostics.transportReady = commandTransportReady ? 1 : 0;
@@ -41,7 +41,7 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
         sc->cmdqid < 0 || sc->cmdqid >= nitems(sc->txq))
         return EINVAL;
     if (!commandTransportReady || (sc->sc_flags & (IWM_FLAG_SHUTDOWN | IWM_FLAG_HW_ERR))) {
-        if (isHardwareTrial()) nativeNvmDiagnostics.commandReject = 2;
+        nativeNvmDiagnostics.commandReject = 2;
         return ENXIO;
     }
 
@@ -152,7 +152,7 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
     allocated = nullptr;
     if (!commandSlots.publish(token)) {
         /* Do not panic if a reset raced publication of this slot. */
-        if (isHardwareTrial()) nativeNvmDiagnostics.commandReject = 3;
+        nativeNvmDiagnostics.commandReject = 3;
         error = ENXIO;
         if (txdata->m) {
             mbuf_freem(txdata->m);
@@ -195,7 +195,7 @@ int ItlIwm::iwm_send_cmd(struct iwm_softc *sc, struct iwm_host_cmd *hcmd)
         }
     }
     if (!commandSlots.consume(token, error)) {
-        if (isHardwareTrial()) nativeNvmDiagnostics.commandReject = 4;
+        nativeNvmDiagnostics.commandReject = 4;
         return ENXIO; // A hardware reset invalidated this host token.
     }
     if (!error) {

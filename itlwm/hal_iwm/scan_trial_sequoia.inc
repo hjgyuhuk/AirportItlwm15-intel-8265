@@ -119,9 +119,9 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
             result.scanPreflightResult = EINVAL;
             return EINVAL;
         }
-        // A channel without a calibration group cannot be scanned, and the
-        // request builder refuses such a channel outright.
-        if (iwm_channel_id_to_papd(static_cast<uint16_t>(i)) >= IWM_NUM_PAPD_CH_GROUPS) continue;
+        // Only the 7000 family has to leave channel 144 out; its inherited
+        // PHY DB index table cannot calibrate it.
+        if (sc->sc_device_family == IWM_DEVICE_FAMILY_7000 && i == 144) continue;
         plan.channels[plan.count++] = static_cast<uint16_t>(i);
     }
     const size_t bytes = IwmTrial::passiveRequestSize(plan);

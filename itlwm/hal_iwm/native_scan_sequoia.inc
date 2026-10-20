@@ -33,8 +33,6 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         for (size_t i = 0; i < plan.channelCount; ++i) {
             const auto channel = plan.channels[i];
             if (!iwm_channel_is_valid(sc, channel)) continue;
-            // The group lookup answers 0xff when the channel has none.
-            if (iwm_channel_id_to_papd(channel) >= IWM_NUM_PAPD_CH_GROUPS) continue;
             nativeScanUsablePlan.channels[kept] = channel;
             nativeScanUsablePlan.probes[kept] = plan.probes[i];
             ++kept;
@@ -47,6 +45,9 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         nativeScanUsableList[nativeScanUsableCount++] = usable.channels[i];
     IwmTrial::PassivePlan wire;
     wire.count = usable.channelCount;
+    // Only the 7000 family has to leave channel 144 out; its inherited PHY
+    // DB index table cannot calibrate it.
+    wire.skipChannel144 = sc->sc_device_family == IWM_DEVICE_FAMILY_7000;
     wire.capacity = sc->sc_capa_n_scan_channels;
     wire.txAnt = iwm_fw_valid_tx_ant(sc);
     wire.rxAnt = iwm_fw_valid_rx_ant(sc);

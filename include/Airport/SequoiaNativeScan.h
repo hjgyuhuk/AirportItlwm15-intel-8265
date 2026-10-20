@@ -48,6 +48,7 @@ public:
         uint32_t nativeScanUsableCount = 0;
         uint16_t nativeScanUsableList[64] = {};
         uint32_t nativeScanSubmitReject = 0;
+        uint32_t nativeScanUmac = 0;
         uint32_t submissions = 0;
         uint32_t lastSubmission = UINT32_MAX;
         uint32_t notifications = 0;

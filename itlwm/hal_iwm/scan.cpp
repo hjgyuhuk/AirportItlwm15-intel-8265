@@ -137,6 +137,19 @@ static_assert(IWM_AUX_STA_ID == 1 && IWM_RATE_MCS_ANT_POS == 14 && IWL_RATE_6M_P
               "Passive scan station and rate ABI");
 static_assert(IWM_REPLY_RX_PHY_CMD == 0xc0 && IWM_REPLY_RX_MPDU_CMD == 0xc1,
               "Native scan RX notification IDs");
+// The UMAC request is a header of a fixed size, a channel array the firmware
+// counts, and a tail. The header size has to be where the channel array
+// starts, or the firmware reads the array at the wrong place.
+static_assert(offsetof(struct iwm_scan_req_umac, v1.data) == IWM_SCAN_REQ_UMAC_SIZE_V1 &&
+              offsetof(struct iwm_scan_req_umac, v7.data) == IWM_SCAN_REQ_UMAC_SIZE_V7 &&
+              offsetof(struct iwm_scan_req_umac, v8.data) == IWM_SCAN_REQ_UMAC_SIZE_V8,
+              "UMAC scan request header layout");
+static_assert(sizeof(struct iwm_scan_channel_cfg_umac) == 8 &&
+              sizeof(struct iwm_scan_umac_chan_param) == 4 &&
+              sizeof(struct iwm_scan_req_umac_tail_v1) ==
+              sizeof(struct iwm_scan_umac_schedule) * IWM_MAX_SCHED_SCAN_PLANS + 4 +
+              sizeof(struct iwm_scan_probe_req_v1) + sizeof(struct iwm_ssid_ie) * IWM_PROBE_OPTION_MAX,
+              "UMAC scan request tail layout");
 #endif
 
 // Keep the portable decoder tied to the actual OpenBSD-derived firmware ABI.
@@ -1049,3 +1062,9 @@ iwm_scan_abort(struct iwm_softc *sc)
         sc->sc_flags &= ~(IWM_FLAG_SCANNING | IWM_FLAG_BGSCAN);
     return err;
 }
+
+#if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
+// The adaptive dwell tuning values are defined above the driver's own scan
+// request, so the native request builder comes after them.
+#include "native_scan_umac_sequoia.inc"
+#endif

@@ -194,6 +194,8 @@ public:
     uint32_t nativeScanUsableCount = 0;
     uint16_t nativeScanUsableList[64] = {};
     uint32_t nativeScanSubmitReject = 0;
+    uint32_t nativeScanUmac = 0;
+    uint32_t lastCommandId = 0;
     uint16_t nativeScanChannelList[64] = {};
     bool nativeScanPassthrough = false;
     int nativeScanDone = 0, nativeScanCancel = 0;
@@ -212,9 +214,16 @@ public:
     int iwm_is_valid_channel(unsigned channel) { return channel && channel <= 196 && channel != 144; }
     uint8_t iwm_fw_valid_tx_ant(iwm_softc *) { return 3; }
     uint8_t iwm_fw_valid_rx_ant(iwm_softc *) { return 3; }
+    size_t iwm_native_umac_scan_size(size_t capacity) { return capacity ? 1684 : 0; }
+    int iwm_native_umac_scan_request(const SequoiaWCL::ScanPlan &, const uint16_t *, size_t,
+                                      size_t, void *, size_t) { return 0; }
+    int iwm_native_umac_scan_abort() { ++aborts; return 0; }
     int iwm_send_cmd(iwm_softc *, iwm_host_cmd *command) {
         assert(busy && nativeScanSink.valid());
-        assert(command->id == IWM_SCAN_OFFLOAD_REQUEST_CMD && command->data[0] && command->len[0]);
+        assert((command->id == IWM_SCAN_OFFLOAD_REQUEST_CMD ||
+                command->id == iwm_cmd_id(IWM_SCAN_REQ_UMAC, IWM_LONG_GROUP, 0)) &&
+               command->data[0] && command->len[0]);
+        lastCommandId = command->id;
         ++submits;
         if (onSubmit) onSubmit();
         return sendError;
@@ -309,6 +318,60 @@ static void transportTests()
             return true;
         }, NativeScan::failureStatus);
         assert(finalStatus == (success ? 0u : 0xe3ff8100u));
+    }
+}
+
+static void umacRequestTests()
+{
+    // The firmware says which scan request it wants by reporting the UMAC
+    // scan capability. The request this tree builds was written for the 7000
+    // family and the 8265's firmware resets on it, so the native path has to
+    // follow the firmware's choice and send the UMAC request.
+    for (unsigned scenario = 0; scenario < 2; ++scenario) {
+        ScanDelivery::Slot slots[2];
+        NativeScan scan;
+        assert(scan.delivery.setStorage(slots, 2));
+        prepare(scan);
+        assert(scan.begin());
+        ItlIwm driver;
+        for (auto channel : {1, 36}) {
+            driver.com.sc_ic.ic_channels[channel].ic_freq = 1;
+            driver.com.sc_ic.ic_chan_avail[channel / 8] |= 1u << (channel % 8);
+        }
+        if (scenario == 1)
+            driver.com.sc_enabled_capa[IWM_UCODE_TLV_CAPA_UMAC_SCAN / 8] |=
+                1u << (IWM_UCODE_TLV_CAPA_UMAC_SCAN % 8);
+        ItlScan::NativeSink sink;
+        sink.context = &scan;
+        sink.submitted = [](void *p, ItlScan::Submission s) { static_cast<NativeScan *>(p)->submitted(s); };
+        sink.notification = [](void *p, uint16_t c, const void *b, size_t s) { static_cast<NativeScan *>(p)->notification(c, b, s); };
+        sink.failed = [](void *p, ItlScan::Outcome o) { static_cast<NativeScan *>(p)->failed(o); };
+        sink.stopped = [](void *p) { static_cast<NativeScan *>(p)->hardwareStopped(); };
+        const int error = driver.iwm_native_scan(scan.plan, sink);
+        assert(error == 0);
+        scan.workerFinished();
+        assert(!driver.nativeScanSink.valid() && !driver.nativeScanPlan && !allocations);
+        // The capability picks the request, and the request id follows it.
+        assert(driver.nativeScanUmac == (scenario == 1 ? 1u : 0u));
+        assert(driver.lastCommandId == (scenario == 1 ?
+            iwm_cmd_id(IWM_SCAN_REQ_UMAC, IWM_LONG_GROUP, 0) : IWM_SCAN_OFFLOAD_REQUEST_CMD));
+    }
+    // The UMAC scan reports its end with its own notification, not the LMAC
+    // offload completion.
+    {
+        NativeScan notificationSink;
+        ItlIwm driver;
+        ItlScan::NativeSink sink;
+        sink.context = &notificationSink;
+        sink.submitted = [](void *, ItlScan::Submission) {};
+        sink.notification = [](void *, uint16_t, const void *, size_t) {};
+        sink.failed = [](void *, ItlScan::Outcome) {};
+        sink.stopped = [](void *) {};
+        driver.nativeScanSink = sink;
+        uint8_t complete[16] = {};
+        complete[6] = 1;
+        assert(driver.iwm_native_scan_rx(0x0f, complete, sizeof(complete)));
+        assert(driver.nativeScanDone);
     }
 }
 
@@ -447,6 +510,7 @@ int main()
     ax210Channel144();
     sessionTests();
     transportTests();
+    umacRequestTests();
     associatedTests();
     puts("Native WCL scan: 1,000 session traces, 13 production HAL worker/regulatory scenarios and associated bgscan admission passed");
 }

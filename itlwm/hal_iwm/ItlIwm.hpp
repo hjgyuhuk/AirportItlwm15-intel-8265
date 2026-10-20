@@ -347,6 +347,10 @@ public:
     int iwm_native_scan(const SequoiaWCL::ScanPlan &, const ItlScan::NativeSink &);
     void iwm_native_scan_cancel();
     bool iwm_native_scan_rx(uint16_t, const void *, size_t);
+    size_t iwm_native_umac_scan_size(size_t) const;
+    int iwm_native_umac_scan_request(const SequoiaWCL::ScanPlan &, const uint16_t *, size_t,
+                                      size_t, void *, size_t);
+    int iwm_native_umac_scan_abort();
     int iwm_native_join_security(const SequoiaWCL::JoinRequestSnapshot &);
     int iwm_native_join_candidate(const SequoiaWCL::JoinRequestSnapshot &, size_t,
                                   struct ieee80211_node **);
@@ -375,6 +379,9 @@ public:
     ItlScan::NativeSink nativeScanSink;
     int nativeScanDone = 0, nativeScanCancel = 0;
     bool nativeScanPassthrough = false;
+    // Which request flavor the last scan used: 0 = the LMAC request this
+    // tree builds, 1 = the UMAC request the firmware asks for.
+    uint32_t nativeScanUmac = 0;
     IwmOperationOwner nativeFirmwareOwner;
     class FirmwareLease {
     public:

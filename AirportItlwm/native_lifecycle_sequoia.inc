@@ -295,6 +295,7 @@ void AirportItlwm::publishNativeScanDiagnostics()
     provider->setProperty("ItlwmNativeScanSourceValid", d.nativeScanSourceValid, 32);
     provider->setProperty("ItlwmNativeScanUsableCount", d.nativeScanUsableCount, 32);
     provider->setProperty("ItlwmNativeScanSubmitReject", d.nativeScanSubmitReject, 32);
+    provider->setProperty("ItlwmNativeScanUmac", d.nativeScanUmac, 32);
     {
         char list[192] = {};
         size_t used = 0;

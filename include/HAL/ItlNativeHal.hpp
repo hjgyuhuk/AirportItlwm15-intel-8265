@@ -40,6 +40,9 @@ public:
     uint16_t nativeScanUsableList[64] = {};
     // Why the command submission was refused, if it was.
     uint32_t nativeScanSubmitReject = 0;
+    // Which request flavor the last scan used: 0 = the LMAC request this
+    // tree builds, 1 = the UMAC request the firmware asks for.
+    uint32_t nativeScanUmac = 0;
 
     // IWX UMAC supports scanning without resetting the connected firmware.
     virtual bool nativeAssociatedScanSupported() const { return false; }

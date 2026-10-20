@@ -77,15 +77,27 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     nativeScanTxAnt = wire.txAnt;
     nativeScanRxAnt = wire.rxAnt;
     nativeScanSourceValid = ItlScan::validUnicast(wire.source) ? 1 : 0;
-    const size_t size = IwmTrial::passiveRequestSize(wire);
-    if (!size) { nativeScanFailStage = 4; return EINVAL; }
+    // The firmware says which scan request it wants: it reports the UMAC
+    // scan capability, and the driver then sends a UMAC request. The request
+    // this tree builds was written for the 7000 family, and the 8265's
+    // firmware 36 resets the radio when it sees it, so the native path
+    // follows the firmware's choice.
+    const bool umac = isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_UMAC_SCAN);
+    nativeScanUmac = umac ? 1 : 0;
+    const size_t size = umac ? iwm_native_umac_scan_size(wire.capacity) :
+                               IwmTrial::passiveRequestSize(wire);
+    if (!size || size > IWM_MAX_CMD_PAYLOAD_SIZE) { nativeScanFailStage = 4; return EINVAL; }
     void *request = malloc(size, M_DEVBUF, M_NOWAIT);
     if (!request) { nativeScanFailStage = 5; return ENOMEM; }
     const bool fragmented = associated &&
         isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_FRAGMENTED_SCAN);
     nativeCacheDiagnostic.assocScanFragmented = fragmented ? 1 : 0;
-    if (!IwmTrial::buildNativeScanRequest(usable, wire.capacity, wire.txAnt, wire.rxAnt,
-                                          fragmented, request, size)) {
+    const bool built = umac ?
+        iwm_native_umac_scan_request(usable, usable.channels, usable.channelCount,
+                                      wire.capacity, request, size) == 0 :
+        IwmTrial::buildNativeScanRequest(usable, wire.capacity, wire.txAnt, wire.rxAnt,
+                                         fragmented, request, size);
+    if (!built) {
         ::free(request);
         nativeScanFailStage = 6;
         return EINVAL;
@@ -102,7 +114,8 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     sc->sc_flags |= associated ? IWM_FLAG_BGSCAN : IWM_FLAG_SCANNING;
     nativeScanPassthrough = associated;
     iwm_host_cmd command = {};
-    command.id = IWM_SCAN_OFFLOAD_REQUEST_CMD;
+    command.id = umac ? iwm_cmd_id(IWM_SCAN_REQ_UMAC, IWM_LONG_GROUP, 0) :
+                        IWM_SCAN_OFFLOAD_REQUEST_CMD;
     command.len[0] = static_cast<uint16_t>(size);
     command.data[0] = request;
     nativeScanSubmitReject = 0;
@@ -119,7 +132,8 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
                         error == ETIMEDOUT ? ItlScan::Outcome::TimedOut : ItlScan::Outcome::TransportError);
             if (commandTransportReady && !nativeScanDone) {
                 // ACK is not a drain barrier. Even a failed abort ends in reset below.
-                iwm_lmac_scan_abort(sc);
+                if (umac) iwm_native_umac_scan_abort();
+                else iwm_lmac_scan_abort(sc);
                 iwm_wait_status(&nativeScanDone, 1, &nativeScanDone, 3);
             }
         }
@@ -152,12 +166,19 @@ bool ItlIwm::iwm_native_scan_rx(uint16_t code, const void *payload, size_t size)
 {
     if (!nativeScanSink.valid()) return false;
     if (code != IWM_REPLY_RX_PHY_CMD && code != IWM_REPLY_RX_MPDU_CMD &&
-        code != IWM_SCAN_ITERATION_COMPLETE && code != IWM_SCAN_OFFLOAD_COMPLETE) return false;
+        code != IWM_SCAN_ITERATION_COMPLETE && code != IWM_SCAN_OFFLOAD_COMPLETE &&
+        code != IWM_SCAN_ITERATION_COMPLETE_UMAC && code != IWM_SCAN_COMPLETE_UMAC) return false;
     nativeScanSink.notification(nativeScanSink.context, code, payload, size);
     iwm_native_scan_cache_rx(code, payload, size);
     ItlScan::ScanNotification notification;
-    if (code == IWM_SCAN_OFFLOAD_COMPLETE &&
-        ItlScan::decodeIwmNotification(ItlScan::IwmNotification::LmacComplete, payload, size, notification)) {
+    // The two request families report their end differently: the LMAC one
+    // ends with the offload completion, the UMAC one with its own.
+    const bool terminal = code == IWM_SCAN_OFFLOAD_COMPLETE ?
+        ItlScan::decodeIwmNotification(ItlScan::IwmNotification::LmacComplete, payload, size, notification) :
+        code == IWM_SCAN_COMPLETE_UMAC ?
+        ItlScan::decodeIwmNotification(ItlScan::IwmNotification::UmacComplete, payload, size, notification) :
+        false;
+    if (terminal) {
         nativeScanDone = 1;
         getMainCommandGate()->commandWakeup(&nativeScanDone, false);
     }

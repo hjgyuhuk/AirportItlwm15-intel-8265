@@ -65,6 +65,11 @@ struct IwmNvmDiagnostics {
     uint32_t commandReject = 0;
     uint32_t driverFlags = 0;
     uint32_t transportReady = 0;
+    // Probe build: the band flags and channel count the scan request carried,
+    // and the channel capacity the firmware reported.
+    uint32_t scanRequestFlags = 0;
+    uint32_t scanRequestChannels = 0;
+    uint32_t scanCapaChannels = 0;
 
     void recordSectionType(uint16_t requested, uint16_t returned, uint16_t length)
     {

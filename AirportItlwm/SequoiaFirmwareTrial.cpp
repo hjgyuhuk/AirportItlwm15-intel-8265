@@ -158,6 +158,9 @@ bool AirportItlwmSequoiaFirmwareTrial::recordDiagnostics()
         {"SequoiaFirmwareCommandReject", detail.commandReject},
         {"SequoiaFirmwareDriverFlags", detail.driverFlags},
         {"SequoiaFirmwareTransportReady", detail.transportReady},
+        {"SequoiaFirmwareScanRequestFlags", detail.scanRequestFlags},
+        {"SequoiaFirmwareScanRequestChannels", detail.scanRequestChannels},
+        {"SequoiaFirmwareScanCapaChannels", detail.scanCapaChannels},
     };
     for (const auto &field : fields) recorded = setProperty(field.name, field.value, 32) && recorded;
     recorded = setProperty("SequoiaFirmwareRegulatoryWords", detail.regulatoryWords) && recorded;

@@ -65,7 +65,8 @@ static bool buildPassiveRequest(const PassivePlan &plan, void *output, size_t by
         if (plan.channels[i] <= 14) has24 = true;
         else has5 = true;
     }
-    request->flags = htole32(has24 ? IWM_PHY_BAND_24 : IWM_PHY_BAND_5);
+    request->flags = htole32((has24 ? IWM_PHY_BAND_24 : 0) |
+        (has5 ? IWM_PHY_BAND_5 : 0));
     auto *probe = reinterpret_cast<iwm_scan_probe_req_v1 *>(request->data +
         plan.capacity * sizeof(*channels));
     probe->buf[0] = 0x40;

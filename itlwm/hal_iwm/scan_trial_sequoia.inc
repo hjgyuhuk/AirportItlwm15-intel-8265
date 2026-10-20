@@ -129,6 +129,13 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
         return EINVAL;
     }
     result.scanPreflightResult = 0;
+#if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
+    if (isHardwareTrial()) {
+        nativeNvmDiagnostics.scanRequestFlags = request->flags;
+        nativeNvmDiagnostics.scanRequestChannels = request->n_channels;
+        nativeNvmDiagnostics.scanCapaChannels = plan.capacity;
+    }
+#endif
     phase = "scan-dqa";
     int error = iwm_send_dqa_cmd(sc);
     result.scanDqaResult = error;

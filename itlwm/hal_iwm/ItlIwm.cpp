@@ -26,8 +26,12 @@ ItlBootProgress gItlwmHalProgress;
 #if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
 bool ItlIwm::attachForNvmTrial(IOPCIDevice *device)
 {
+    // 0x24FD is the Intel Wireless 8265 (IWM 8000 family, firmware 36). The
+    // upstream trial only accepted the 7000-family AX211; the probe needs to
+    // reach the 8000 HAL to see how far the firmware dialogue actually gets.
+    const uint16_t deviceId = device ? device->configRead16(kIOPCIConfigDeviceID) : 0;
     if (!device || device->configRead16(kIOPCIConfigVendorID) != 0x8086 ||
-        device->configRead16(kIOPCIConfigDeviceID) != 0x3166 || pci.pa_tag || nativeDetached)
+        (deviceId != 0x3166 && deviceId != 0x24FD) || pci.pa_tag || nativeDetached)
         return false;
     nativeNvmTrial = true;
     return attach(device);

@@ -74,6 +74,16 @@ def bundle_info(config):
         "IOProviderClass": "IOPCIDevice",
         "IOPCIMatch": config["trial_pci_match"],
     }
+    # Probe build: the NVM trial is the first, lowest-risk rung of the
+    # ladder. It only starts the hardware, loads the INIT firmware and reads
+    # the NVM; it never touches calibration, the regular firmware or a scan.
+    info["IOKitPersonalities"]["AirportItlwmSequoiaNvmTrial"] = {
+        "CFBundleIdentifier": config["identifier"],
+        "IOClass": "AirportItlwmSequoiaNvmTrial",
+        "IOProbeScore": 70000,
+        "IOProviderClass": "IOPCIDevice",
+        "IOPCIMatch": config["trial_pci_match"],
+    }
     return info
 
 
@@ -130,11 +140,13 @@ def main():
              str(REPO / "itlwm/firmware")], "firmware")
         sources = sources_from_project(REPO)
         sources = [firmware if p.name == "FwBinary.cpp" else p for p in sources]
-        # Probe build: the diagnostic personality is not part of the upstream
-        # release target, so it is compiled in explicitly here.
-        trial_source = REPO / "AirportItlwm/SequoiaFirmwareTrial.cpp"
-        if trial_source not in sources:
-            sources.append(trial_source)
+        # Probe build: the diagnostic personalities are not part of the upstream
+        # release target, so they are compiled in explicitly here.
+        for extra in ("AirportItlwm/SequoiaFirmwareTrial.cpp",
+                      "AirportItlwm/SequoiaNvmTrial.cpp"):
+            trial_source = REPO / extra
+            if trial_source not in sources:
+                sources.append(trial_source)
         compiler = subprocess.check_output(["xcrun", "--find", "clang++"], text=True).strip()
         compiled = []
         for index, source in enumerate(sources):

@@ -51,11 +51,16 @@ bool ItlIwm::iwm_scan_trial_command_allowed(iwm_softc *sc, const iwm_host_cmd *c
                 !memcmp(command->data[0], &expected, sizeof(expected));
         }
     }
-    if (strcmp(phase, "scan-submit") || result.scanAuxResult != 0 ||
-        command->id != IWM_SCAN_OFFLOAD_REQUEST_CMD || command->flags)
+    if (strcmp(phase, "scan-submit") || result.scanAuxResult != 0 || command->flags)
         return false;
+    if (nativeUpstreamUmacScan)
+        return command->id == iwm_cmd_id(IWM_SCAN_REQ_UMAC, IWM_LONG_GROUP, 0) &&
+            command->data[0] != nullptr && command->len[0] != 0;
     if (nativeUpstreamScan)
-        return command->data[0] != nullptr && command->len[0] != 0;
+        return command->id == IWM_SCAN_OFFLOAD_REQUEST_CMD &&
+            command->data[0] != nullptr && command->len[0] != 0;
+    if (command->id != IWM_SCAN_OFFLOAD_REQUEST_CMD)
+        return false;
     return nativePassiveRequest && command->data[0] == nativePassiveRequest &&
         command->len[0] == nativePassiveRequestBytes;
 }
@@ -176,7 +181,8 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
                 sizeof(rates5));
             ic->ic_sup_rates[IEEE80211_MODE_11A].rs_nrates = sizeof(rates5);
             IEEE80211_ADDR_COPY(ic->ic_myaddr, sc->sc_nvm.hw_addr);
-            error = iwm_lmac_scan(sc, 0, nullptr);
+            error = nativeUpstreamUmacScan ? iwm_umac_scan(sc, 0, nullptr)
+                                           : iwm_lmac_scan(sc, 0, nullptr);
             result.scanSubmitResult = error;
             result.scanWaitResult = error;
             if (!error) {

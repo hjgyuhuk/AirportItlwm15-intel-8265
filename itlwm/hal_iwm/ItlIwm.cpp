@@ -53,6 +53,9 @@ bool ItlIwm::attachForFirmwareTrial(IOPCIDevice *device)
     int upstreamScan = 0;
     if (PE_parse_boot_argn("itlwm_scan_upstream", &upstreamScan, sizeof(upstreamScan)))
         nativeUpstreamScan = upstreamScan != 0;
+    int umacScan = 0;
+    if (PE_parse_boot_argn("itlwm_scan_umac", &umacScan, sizeof(umacScan)))
+        nativeUpstreamUmacScan = umacScan != 0;
     return attach(device);
 }
 #endif

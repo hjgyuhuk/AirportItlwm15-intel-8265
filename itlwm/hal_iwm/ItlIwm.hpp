@@ -322,6 +322,9 @@ public:
     // Probe build: run the scan request this tree builds against the driver's
     // own scan path, to see whether the firmware accepts that one.
     bool nativeUpstreamScan = false;
+    // Probe build: the firmware of this family only accepts the UMAC scan
+    // request, so the dialogue can run that one instead.
+    bool nativeUpstreamUmacScan = false;
     bool isHardwareTrial() const { return nativeNvmTrial || nativeFirmwareTrial; }
     int nativeNvmTrialError = ENXIO;
     int nativeFirmwareTrialError = ENXIO;

@@ -159,6 +159,7 @@ bool AirportItlwmSequoiaFirmwareTrial::recordDiagnostics()
     for (const auto &field : fields) recorded = setProperty(field.name, field.value, 32) && recorded;
     recorded = setProperty("SequoiaFirmwareRegulatoryWords", detail.regulatoryWords) && recorded;
     recorded = setProperty("SequoiaFirmwarePhySkuWords", detail.phySkuWords) && recorded;
+    recorded = setProperty("SequoiaFirmwareRegulatoryNonZero", detail.regulatoryNonZero) && recorded;
     // Probe build: publish the firmware's own section id for every requested
     // section, so the generation-specific mapping can be recovered from one
     // run instead of being guessed at.

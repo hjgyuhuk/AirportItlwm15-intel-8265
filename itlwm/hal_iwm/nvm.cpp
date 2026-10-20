@@ -496,6 +496,17 @@ iwm_nvm_init(struct iwm_softc *sc)
                     if (le16_to_cpup(words + i) & IWM_NVM_CHANNEL_VALID)
                         ++nativeNvmDiagnostics.regulatoryValidFlags;
                 }
+                // Probe build: walk the whole section and record where the
+                // non-zero words are, so the channel flag array can be found
+                // instead of assumed to start at word 0.
+                const size_t available = nvm_sections[IWM_NVM_SECTION_TYPE_REGULATORY].length / sizeof(uint16_t);
+                for (size_t i = 0; i < available && nativeNvmDiagnostics.regulatoryNonZeroCount < 48; ++i) {
+                    const uint16_t value = le16_to_cpup(words + i);
+                    if (!value) continue;
+                    snprintf(nativeNvmDiagnostics.regulatoryNonZero +
+                        nativeNvmDiagnostics.regulatoryNonZeroCount * 10, 11, "%zu:%04x", i, value);
+                    ++nativeNvmDiagnostics.regulatoryNonZeroCount;
+                }
             }
             const auto *phySku = nvm_sections[IWM_NVM_SECTION_TYPE_PHY_SKU].data;
             if (phySku) {

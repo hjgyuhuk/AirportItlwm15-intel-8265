@@ -47,6 +47,10 @@ struct IwmNvmDiagnostics {
     char phySkuWords[64] = {};
     uint32_t skuValue = UINT32_MAX;
     uint32_t regulatoryValidFlags = 0;
+    // Probe build: the indices and values of the non-zero words in the
+    // regulatory section, so the channel flag array can be located inside it.
+    char regulatoryNonZero[512] = {};
+    uint32_t regulatoryNonZeroCount = 0;
 
     void recordSectionType(uint16_t requested, uint16_t returned, uint16_t length)
     {

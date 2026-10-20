@@ -291,9 +291,13 @@ void AirportItlwm::publishNativeScanDiagnostics()
     {
         char list[192] = {};
         size_t used = 0;
-        for (uint32_t i = 0; i < d.nativeScanChannelCount && used + 5 < sizeof(list); ++i)
-            used += snprintf(list + used, sizeof(list) - used, "%u%c",
+        for (uint32_t i = 0; i < d.nativeScanChannelCount && used + 6 < sizeof(list); ++i) {
+            const int written = snprintf(list + used, sizeof(list) - used, "%u%c",
                 d.nativeScanChannelList[i], i + 1 < d.nativeScanChannelCount ? ',' : 0);
+            if (written < 0) break;
+            used += static_cast<size_t>(written) < sizeof(list) - used
+                ? static_cast<size_t>(written) : sizeof(list) - used - 1;
+        }
         provider->setProperty("ItlwmNativeScanChannelList", list);
     }
     provider->setProperty("ItlwmNativeScanSubmissions", d.submissions, 32);

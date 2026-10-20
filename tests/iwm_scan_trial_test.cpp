@@ -309,6 +309,14 @@ struct ItlIwm {
     bool nativeUpstreamScan = false;
     bool nativeUpstreamUmacScan = false;
 
+    // A channel without a calibration group cannot be scanned.
+    uint16_t iwm_channel_id_to_papd(uint16_t ch_id)
+    {
+        if (ch_id <= 14) return 0;
+        if (ch_id <= 64) return 1;
+        if (ch_id <= 140) return 2;
+        return 3;
+    }
     bool iwm_channel_is_valid(struct iwm_softc *sc, uint16_t ch_id)
     {
         if (sc && ch_id < 256 && sc->sc_ic.ic_channels[ch_id].ic_freq &&

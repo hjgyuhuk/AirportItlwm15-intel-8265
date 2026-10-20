@@ -23,8 +23,25 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         (associated && (sc->sc_ic.ic_state != IEEE80211_S_RUN || !sc->sc_ic.ic_bss)) ||
         (sc->sc_flags & (IWM_FLAG_SCANNING | IWM_FLAG_BGSCAN | IWM_FLAG_RFKILL)))
         return EOPNOTSUPP;
+    // A channel the radio reports is not automatically usable: one without a
+    // calibration group cannot be scanned, and the request builder refuses
+    // such a channel outright. Drop those channels here instead of failing the
+    // whole scan over one of them.
+    nativeScanUsablePlan = plan;
+    {
+        size_t kept = 0;
+        for (size_t i = 0; i < plan.channelCount; ++i) {
+            const auto channel = plan.channels[i];
+            if (iwm_channel_id_to_papd(channel) == 0xffff) continue;
+            nativeScanUsablePlan.channels[kept] = channel;
+            nativeScanUsablePlan.probes[kept] = plan.probes[i];
+            ++kept;
+        }
+        nativeScanUsablePlan.channelCount = kept;
+    }
+    const auto &usable = nativeScanUsablePlan;
     IwmTrial::PassivePlan wire;
-    wire.count = plan.channelCount;
+    wire.count = usable.channelCount;
     wire.capacity = sc->sc_capa_n_scan_channels;
     wire.txAnt = iwm_fw_valid_tx_ant(sc);
     wire.rxAnt = iwm_fw_valid_rx_ant(sc);
@@ -36,18 +53,18 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         nativeScanChannelList[nativeScanChannelCount++] = plan.channels[i];
     if (wire.count > nitems(wire.channels)) { nativeScanFailStage = 1; return EINVAL; }
     for (size_t i = 0; i < wire.count; ++i) {
-        const auto channel = plan.channels[i];
+        const auto channel = usable.channels[i];
         if (channel >= nitems(sc->sc_ic.ic_channels) || !iwm_channel_is_valid(sc, channel) ||
             !sc->sc_ic.ic_channels[channel].ic_freq || !isset(sc->sc_ic.ic_chan_avail, channel)) {
             nativeScanFailStage = 2;
             nativeScanFailChannel = channel;
             return EINVAL;
         }
-        if (plan.probes[i] && (sc->sc_ic.ic_channels[channel].ic_flags &
+        if (usable.probes[i] && (sc->sc_ic.ic_channels[channel].ic_flags &
             (IEEE80211_CHAN_PASSIVE | IEEE80211_CHAN_DFS))) { nativeScanFailStage = 3; return EOPNOTSUPP; }
         wire.channels[i] = channel;
     }
-    memcpy(wire.source, plan.source, sizeof(wire.source));
+    memcpy(wire.source, usable.source, sizeof(wire.source));
     const size_t size = IwmTrial::passiveRequestSize(wire);
     if (!size) { nativeScanFailStage = 4; return EINVAL; }
     void *request = malloc(size, M_DEVBUF, M_NOWAIT);
@@ -55,14 +72,14 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     const bool fragmented = associated &&
         isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_FRAGMENTED_SCAN);
     nativeCacheDiagnostic.assocScanFragmented = fragmented ? 1 : 0;
-    if (!IwmTrial::buildNativeScanRequest(plan, wire.capacity, wire.txAnt, wire.rxAnt,
+    if (!IwmTrial::buildNativeScanRequest(usable, wire.capacity, wire.txAnt, wire.rxAnt,
                                           fragmented, request, size)) {
         ::free(request);
         nativeScanFailStage = 6;
         return EINVAL;
     }
     nativeScanSink = sink;
-    nativeScanPlan = &plan;
+    nativeScanPlan = &nativeScanUsablePlan;
     nativeScanCachePhy = {};
     nativeScanDone = nativeScanCancel = 0;
     // The associated bgscan must never set IWM_FLAG_SCANNING: the legacy

@@ -119,6 +119,9 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
             result.scanPreflightResult = EINVAL;
             return EINVAL;
         }
+        // A channel without a calibration group cannot be scanned, and the
+        // request builder refuses such a channel outright.
+        if (iwm_channel_id_to_papd(static_cast<uint16_t>(i)) == 0xffff) continue;
         plan.channels[plan.count++] = static_cast<uint16_t>(i);
     }
     const size_t bytes = IwmTrial::passiveRequestSize(plan);

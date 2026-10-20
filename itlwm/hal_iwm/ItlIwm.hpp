@@ -367,6 +367,10 @@ public:
     void iwm_native_join_event(const ItlJoin::Event &);
     void iwm_native_scan_cache_rx(uint16_t, const void *, size_t);
     const SequoiaWCL::ScanPlan *nativeScanPlan = nullptr;
+    // The plan the request was actually built from. It can differ from the
+    // requested one when a channel the radio reports has no calibration group
+    // and therefore cannot be scanned.
+    SequoiaWCL::ScanPlan nativeScanUsablePlan;
     ItlScan::LegacyPhy nativeScanCachePhy;
     ItlScan::NativeSink nativeScanSink;
     int nativeScanDone = 0, nativeScanCancel = 0;

@@ -11,7 +11,7 @@
     "itlwm_bsd_owner=skywalk"
   ],
   "tested_adapter": "AX210",
-  "pci_match": "0x31668086 0x27258086",
+  "pci_match": "0x31668086 0x27258086 0x24fd8086",
   "base_development_revision": "r260",
   "prerelease": true
 }

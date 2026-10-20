@@ -12,9 +12,12 @@ static const char kKernelVersion[] =
 inline bool allowed(int mode, int major, int minor, const char *kernelVersion,
                     uint16_t vendor, uint16_t device)
 {
+    // 0x24FD is the Intel Wireless 8265/9070 (IWM) function, which the IWM HAL
+    // already carries a native Sequoia path for. Upstream only validated the
+    // AX210, so this entry is an untested opt-in, not a supported adapter.
     return mode == 1 && major == 24 && minor == 6 && kernelVersion &&
            strcmp(kernelVersion, kKernelVersion) == 0 && vendor == 0x8086 &&
-           (device == 0x3166 || device == 0x2725);
+           (device == 0x3166 || device == 0x2725 || device == 0x24FD);
 }
 }
 #endif

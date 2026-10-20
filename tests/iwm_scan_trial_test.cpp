@@ -285,6 +285,7 @@ static void receive()
 }
 
 namespace Radio {
+constexpr int IWM_NUM_PAPD_CH_GROUPS = 9;
 constexpr int IWM_UCODE_TYPE_REGULAR = 0, IWM_DEVICE_FAMILY_7000 = 7000, IWM_DEVICE_FAMILY_9000 = 9000, IWM_FLAG_RFKILL = 1;
 constexpr int IWM_CMD_WANT_RESP = 2, M_DEVBUF = 0, M_NOWAIT = 0;
 #define nitems(value) (sizeof(value) / sizeof((value)[0]))

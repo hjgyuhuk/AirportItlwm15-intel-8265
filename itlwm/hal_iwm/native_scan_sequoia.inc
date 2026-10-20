@@ -33,7 +33,8 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         for (size_t i = 0; i < plan.channelCount; ++i) {
             const auto channel = plan.channels[i];
             if (!iwm_channel_is_valid(sc, channel)) continue;
-            if (iwm_channel_id_to_papd(channel) == 0xffff) continue;
+            // The group lookup answers 0xff when the channel has none.
+            if (iwm_channel_id_to_papd(channel) >= IWM_NUM_PAPD_CH_GROUPS) continue;
             nativeScanUsablePlan.channels[kept] = channel;
             nativeScanUsablePlan.probes[kept] = plan.probes[i];
             ++kept;

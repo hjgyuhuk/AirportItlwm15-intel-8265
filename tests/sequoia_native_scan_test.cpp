@@ -1,4 +1,6 @@
 #include <Airport/SequoiaNativeScan.h>
+
+constexpr int IWM_NUM_PAPD_CH_GROUPS = 9;
 #include <HAL/ItlNativeScan.h>
 #include <HAL/IwmNvmDiagnostics.h>
 #include <cassert>

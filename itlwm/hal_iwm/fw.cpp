@@ -1151,8 +1151,7 @@ iwm_load_ucode_wait_alive(struct iwm_softc *sc,
 #if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
     if (nativeNvmTrial && (ucode_type != IWM_UCODE_TYPE_INIT || fw->paging_mem_size))
         return EOPNOTSUPP;
-    if (nativeFirmwareTrial && (fw->paging_mem_size ||
-        (ucode_type != IWM_UCODE_TYPE_INIT && ucode_type != IWM_UCODE_TYPE_REGULAR) ||
+    if (nativeFirmwareTrial && ((ucode_type != IWM_UCODE_TYPE_INIT && ucode_type != IWM_UCODE_TYPE_REGULAR) ||
         ((ucode_type == IWM_UCODE_TYPE_REGULAR) !=
          (nativeFirmwareDiagnostics.stage == IwmFirmwareStage::Regular))))
         return EOPNOTSUPP;

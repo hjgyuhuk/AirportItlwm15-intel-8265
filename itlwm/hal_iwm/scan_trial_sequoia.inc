@@ -29,7 +29,7 @@ bool ItlIwm::iwm_scan_trial_command_allowed(iwm_softc *sc, const iwm_host_cmd *c
             // 7000 family does not and takes the v7 one. The driver already
             // picks the same way, so the expectation follows it.
             if (isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE)) {
-                iwm_add_sta_cmd expected = {};
+                struct iwm_add_sta_cmd expected = {};
                 expected.tid_disable_tx = htole16(0xffff);
                 expected.mac_id_n_color =
                     htole32(IWM_FW_CMD_ID_AND_COLOR(IWM_MAC_INDEX_AUX, 0));

@@ -51,6 +51,10 @@ struct IwmNvmDiagnostics {
     // the group boundaries can be compared against the mapping.
     char txpGroupMaxIndex[128] = {};
     char channelGroups[640] = {};
+    // Probe build: the leading bytes of every PAPD and TXP group payload, so
+    // the group header layout can be read instead of assumed.
+    char papdGroupBytes[256] = {};
+    char txpGroupBytes[512] = {};
 
     void recordSectionType(uint16_t requested, uint16_t returned, uint16_t length)
     {

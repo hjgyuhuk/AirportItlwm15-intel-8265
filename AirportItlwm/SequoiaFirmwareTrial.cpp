@@ -162,6 +162,8 @@ bool AirportItlwmSequoiaFirmwareTrial::recordDiagnostics()
     recorded = setProperty("SequoiaFirmwareRegulatoryNonZero", detail.regulatoryNonZero) && recorded;
     recorded = setProperty("SequoiaFirmwareTxpGroupMaxIndex", detail.txpGroupMaxIndex) && recorded;
     recorded = setProperty("SequoiaFirmwareChannelGroups", detail.channelGroups) && recorded;
+    recorded = setProperty("SequoiaFirmwarePapdGroupBytes", detail.papdGroupBytes) && recorded;
+    recorded = setProperty("SequoiaFirmwareTxpGroupBytes", detail.txpGroupBytes) && recorded;
     // Probe build: publish the firmware's own section id for every requested
     // section, so the generation-specific mapping can be recovered from one
     // run instead of being guessed at.

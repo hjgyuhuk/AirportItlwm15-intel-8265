@@ -117,6 +117,35 @@ IwmPhyDbSnapshot ItlIwm::iwm_phy_db_snapshot(struct iwm_softc *sc)
                     sizeof(nativeNvmDiagnostics.txpGroupMaxIndex) - used, "%u:%u ",
                     i, le16toh(txp->max_channel_idx));
         }
+        // Probe build: the leading bytes of every group payload. The group id
+        // occupies the first two bytes, so the fields after it are at an
+        // offset the driver has to know.
+        for (unsigned i = 0; i < IWM_NUM_TXP_CH_GROUPS; ++i) {
+            const auto &entry = db.calib_ch_group_txp[i];
+            if (!entry.data) continue;
+            const size_t used = strlen(nativeNvmDiagnostics.txpGroupBytes);
+            const size_t room = sizeof(nativeNvmDiagnostics.txpGroupBytes) - used;
+            if (room < 20) break;
+            size_t off = 0;
+            off += snprintf(nativeNvmDiagnostics.txpGroupBytes + used, room, "%u:", i);
+            for (size_t k = 0; k < 10 && k < entry.size && off + 3 < room; ++k)
+                off += snprintf(nativeNvmDiagnostics.txpGroupBytes + used + off, room - off,
+                    "%02x", entry.data[k]);
+            off += snprintf(nativeNvmDiagnostics.txpGroupBytes + used + off, room - off, " ");
+        }
+        for (unsigned i = 0; i < IWM_NUM_PAPD_CH_GROUPS; ++i) {
+            const auto &entry = db.calib_ch_group_papd[i];
+            if (!entry.data) continue;
+            const size_t used = strlen(nativeNvmDiagnostics.papdGroupBytes);
+            const size_t room = sizeof(nativeNvmDiagnostics.papdGroupBytes) - used;
+            if (room < 20) break;
+            size_t off = 0;
+            off += snprintf(nativeNvmDiagnostics.papdGroupBytes + used, room, "%u:", i);
+            for (size_t k = 0; k < 10 && k < entry.size && off + 3 < room; ++k)
+                off += snprintf(nativeNvmDiagnostics.papdGroupBytes + used + off, room - off,
+                    "%02x", entry.data[k]);
+            off += snprintf(nativeNvmDiagnostics.papdGroupBytes + used + off, room - off, " ");
+        }
     }
 #endif
     return result;

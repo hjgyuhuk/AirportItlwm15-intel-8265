@@ -36,6 +36,12 @@ public:
         uint32_t workerStarts = 0;
         uint32_t enableResult = UINT32_MAX;
         uint32_t nativeScanResult = UINT32_MAX;
+        // Probe build: where the native scan request construction gave up and
+        // which channels it was asked for.
+        uint32_t nativeScanFailStage = 0;
+        uint32_t nativeScanFailChannel = 0;
+        uint32_t nativeScanChannelCount = 0;
+        uint16_t nativeScanChannelList[64] = {};
         uint32_t submissions = 0;
         uint32_t lastSubmission = UINT32_MAX;
         uint32_t notifications = 0;

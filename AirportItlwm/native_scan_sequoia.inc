@@ -366,6 +366,11 @@ void AirportItlwm::runNativeScan()
             nativeScan.finishAssociatedScan(!hal->nativeAssociatedScanSupported());
             nativeScan.diagnostics.cache = hal->nativeCacheDiagnostic;
             nativeScan.diagnostics.nativeScanResult = static_cast<uint32_t>(error);
+            nativeScan.diagnostics.nativeScanFailStage = hal->nativeScanFailStage;
+            nativeScan.diagnostics.nativeScanFailChannel = hal->nativeScanFailChannel;
+            nativeScan.diagnostics.nativeScanChannelCount = hal->nativeScanChannelCount;
+            memcpy(nativeScan.diagnostics.nativeScanChannelList,
+                hal->nativeScanChannelList, sizeof(nativeScan.diagnostics.nativeScanChannelList));
             setProperty("SequoiaNativeScanError", static_cast<uint64_t>(error), 32);
             publishNativeScanDiagnostics();
         } else if (enabled == kIOReturnSuccess && !nativeScan.plan.associatedScan()) {

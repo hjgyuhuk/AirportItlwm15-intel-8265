@@ -9,6 +9,19 @@ int ItlIwm::iwm_is_valid_channel(uint16_t ch_id)
     return 0;
 }
 
+// Which channels the radio may use is decided by the regulatory section the
+// NVM carries, not by a hard coded band table: the 8265 offers 68 to 96 and
+// 169 to 181 on top of the bands the 7000 family knows, and the scan and
+// join paths would otherwise reject them.
+bool ItlIwm::iwm_channel_is_valid(struct iwm_softc *sc, uint16_t ch_id)
+{
+    if (sc && ch_id < nitems(sc->sc_ic.ic_channels)) {
+        const auto &entry = sc->sc_ic.ic_channels[ch_id];
+        if (entry.ic_freq && entry.ic_flags) return true;
+    }
+    return iwm_is_valid_channel(ch_id) != 0;
+}
+
 uint8_t ItlIwm::iwm_ch_id_to_ch_index(uint16_t ch_id)
 {
     if (!iwm_is_valid_channel(ch_id))

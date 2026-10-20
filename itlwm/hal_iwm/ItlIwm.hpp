@@ -195,6 +195,7 @@ public:
                                   struct iwm_calib_res_notif_phy_db *);
 #endif
     int    iwm_is_valid_channel(uint16_t);
+    bool   iwm_channel_is_valid(struct iwm_softc *, uint16_t);
     uint8_t    iwm_ch_id_to_ch_index(uint16_t);
     uint16_t iwm_channel_id_to_papd(uint16_t);
     uint16_t iwm_channel_id_to_txp(struct iwm_softc *, uint16_t);

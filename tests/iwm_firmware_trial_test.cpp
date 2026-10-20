@@ -84,6 +84,16 @@ struct iwm_softc {
 };
 struct ItlIwm {
     bool nativeFirmwareTrial = true, nativeNvmTrial = false, nativeNet80211Attached = false;
+
+    bool iwm_channel_is_valid(struct iwm_softc *sc, uint16_t ch_id)
+    {
+        if (sc && ch_id < 256 && sc->sc_ic.ic_channels[ch_id].ic_freq &&
+            sc->sc_ic.ic_channels[ch_id].ic_flags) return true;
+        return ch_id <= 14 || (36 <= ch_id && ch_id <= 64 && ch_id % 4 == 0) ||
+            (100 <= ch_id && ch_id <= 140 && ch_id % 4 == 0) ||
+            (145 <= ch_id && ch_id <= 165 && ch_id % 4 == 1);
+    }
+
     bool nativeHardwareStarted = false, owned = true, gated = true, eventThread = false;
     IwmFirmwareDiagnostics nativeFirmwareDiagnostics;
     IwmNvmDiagnostics nativeNvmDiagnostics;
@@ -120,7 +130,9 @@ struct ItlIwm {
     }
     IwmPhyDbSnapshot iwm_phy_db_snapshot(iwm_softc *)
     {
-        if (fault == 12) database.coveredChannels = 0;
+        // The completeness check needs the configuration and the channel
+        // count; a group coverage shortfall alone no longer fails it.
+        if (fault == 12) database.cfgBytes = 0;
         return database;
     }
     int iwm_load_ucode_wait_alive(iwm_softc *, int type)

@@ -31,7 +31,7 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     if (wire.count > nitems(wire.channels)) return EINVAL;
     for (size_t i = 0; i < wire.count; ++i) {
         const auto channel = plan.channels[i];
-        if (channel >= nitems(sc->sc_ic.ic_channels) || !iwm_is_valid_channel(channel) ||
+        if (channel >= nitems(sc->sc_ic.ic_channels) || !iwm_channel_is_valid(sc, channel) ||
             !sc->sc_ic.ic_channels[channel].ic_freq || !isset(sc->sc_ic.ic_chan_avail, channel)) return EINVAL;
         if (plan.probes[i] && (sc->sc_ic.ic_channels[channel].ic_flags &
             (IEEE80211_CHAN_PASSIVE | IEEE80211_CHAN_DFS))) return EOPNOTSUPP;

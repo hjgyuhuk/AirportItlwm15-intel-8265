@@ -303,6 +303,16 @@ static bool failAllocation = false;
 static void *allocate(size_t size, int, int) { return failAllocation ? nullptr : malloc(size); }
 struct ItlIwm {
     bool nativeFirmwareTrial = true, nativeNet80211Attached = false, nativeCalibrationActive = false;
+
+    bool iwm_channel_is_valid(struct iwm_softc *sc, uint16_t ch_id)
+    {
+        if (sc && ch_id < 256 && sc->sc_ic.ic_channels[ch_id].ic_freq &&
+            sc->sc_ic.ic_channels[ch_id].ic_flags) return true;
+        return ch_id <= 14 || (36 <= ch_id && ch_id <= 64 && ch_id % 4 == 0) ||
+            (100 <= ch_id && ch_id <= 140 && ch_id % 4 == 0) ||
+            (145 <= ch_id && ch_id <= 165 && ch_id % 4 == 1);
+    }
+
     bool commandTransportReady = true, gated = true, eventThread = false, early = false, resetInAux = false;
     unsigned steps = 0, fault = 0, locks = 0;
     uint64_t commandEpoch = 1;

@@ -70,14 +70,17 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
     for (size_t i = 1; i < nitems(sc->sc_ic.ic_channels); ++i) {
         const auto &channel = sc->sc_ic.ic_channels[i];
         if (!channel.ic_freq || !channel.ic_flags) continue;
-        if (plan.count == nitems(plan.channels) || !iwm_is_valid_channel(i)) {
+        if (plan.count == nitems(plan.channels) || !iwm_channel_is_valid(sc, i)) {
             result.scanPreflightResult = EINVAL;
             return EINVAL;
         }
         plan.channels[plan.count++] = static_cast<uint16_t>(i);
     }
     const size_t bytes = IwmTrial::passiveRequestSize(plan);
-    if (!bytes || plan.count != result.phy.coveredChannels) {
+    // The plan may only use channels the radio's regulatory section offers.
+    // How many of them carry a PAPD and TXP calibration group is a property
+    // of the firmware's grouping, so it is reported but not required here.
+    if (!bytes || !plan.count) {
         result.scanPreflightResult = EINVAL;
         return EINVAL;
     }

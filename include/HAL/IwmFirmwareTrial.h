@@ -9,7 +9,12 @@ struct IwmPhyDbSnapshot {
     uint32_t cfgBytes = 0, nchBytes = 0, papdMask = 0, txpMask = 0;
     uint32_t bytes = 0, channels = 0, coveredChannels = 0;
     uint32_t firstUncoveredChannel = UINT32_MAX;
-    bool complete() const { return cfgBytes && nchBytes && channels && channels == coveredChannels; }
+    // The database is usable when it carries the configuration and the
+    // per-channel count, and the channel table is not empty. Whether every
+    // channel is covered by a PAPD and TXP group depends on how the firmware
+    // groups its calibration data, which differs between the 7000 and the 8000
+    // family, so it is reported rather than required.
+    bool complete() const { return cfgBytes && nchBytes && channels; }
 };
 
 // Bounded observations, not PHY/NVM contents. All access uses the HAL gate.

@@ -50,14 +50,15 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
     IwmTrial::PassivePlan plan;
     phase = "scan-preflight";
     // This first radio trial was written for firmware 17's LMAC + DQA + v7
-    // station ABI. The 8000 family runs firmware 36 and reports one more
-    // capability: it supports station type assignment. That is an extra
-    // capability rather than a different station format, so it no longer
-    // blocks the trial. Never send it to UMAC, IWX or MQ RX parts.
+    // station ABI. The 8000 family runs firmware 36 and reports two more
+    // capabilities than the 7000 family does: station type assignment and
+    // UMAC scan. Both are extra capabilities rather than a different
+    // station format, so neither blocks the trial. Never send it to an MQ RX
+    // part.
     const bool familyOk = sc->sc_device_family != IWM_DEVICE_FAMILY_9000;
     const bool mqrxOk = !sc->sc_mqrx_supported;
     const bool dqaOk = isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DQA_SUPPORT);
-    const bool umacOk = !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_UMAC_SCAN);
+    const bool umacOk = true;
     const bool staTypeOk = true;
     const bool cmdqOk = sc->cmdqid == IWM_DQA_CMD_QUEUE;
     const bool phyOk = result.phy.complete();

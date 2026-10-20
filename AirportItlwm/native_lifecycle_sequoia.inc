@@ -285,6 +285,17 @@ void AirportItlwm::publishNativeScanDiagnostics()
     provider->setProperty("ItlwmNativeScanWorkerStarts", d.workerStarts, 32);
     provider->setProperty("ItlwmNativeScanEnableResult", d.enableResult, 32);
     provider->setProperty("ItlwmNativeScanNativeResult", d.nativeScanResult, 32);
+    provider->setProperty("ItlwmNativeScanFailStage", d.nativeScanFailStage, 32);
+    provider->setProperty("ItlwmNativeScanFailChannel", d.nativeScanFailChannel, 32);
+    provider->setProperty("ItlwmNativeScanChannelCount", d.nativeScanChannelCount, 32);
+    {
+        char list[192] = {};
+        size_t used = 0;
+        for (uint32_t i = 0; i < d.nativeScanChannelCount && used + 5 < sizeof(list); ++i)
+            used += snprintf(list + used, sizeof(list) - used, "%u%c",
+                d.nativeScanChannelList[i], i + 1 < d.nativeScanChannelCount ? ',' : 0);
+        provider->setProperty("ItlwmNativeScanChannelList", list);
+    }
     provider->setProperty("ItlwmNativeScanSubmissions", d.submissions, 32);
     provider->setProperty("ItlwmNativeScanLastSubmission", d.lastSubmission, 32);
     provider->setProperty("ItlwmNativeScanNotifications", d.notifications, 32);

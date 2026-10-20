@@ -26,6 +26,12 @@ public:
     // Workloop-owned; copied by the join worker before teardown can change it.
     SequoiaWCL::JoinCandidateDiagnostic nativeCandidateDiagnostic;
     ItlScan::CacheDiagnostic nativeCacheDiagnostic;
+    // Probe build: where the native scan request construction gave up and
+    // which channels it was asked for.
+    uint32_t nativeScanFailStage = 0;
+    uint32_t nativeScanFailChannel = 0;
+    uint32_t nativeScanChannelCount = 0;
+    uint16_t nativeScanChannelList[64] = {};
 
     // IWX UMAC supports scanning without resetting the connected firmware.
     virtual bool nativeAssociatedScanSupported() const { return false; }

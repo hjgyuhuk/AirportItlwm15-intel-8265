@@ -28,26 +28,37 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     wire.capacity = sc->sc_capa_n_scan_channels;
     wire.txAnt = iwm_fw_valid_tx_ant(sc);
     wire.rxAnt = iwm_fw_valid_rx_ant(sc);
-    if (wire.count > nitems(wire.channels)) return EINVAL;
+    // Probe build: record what was asked for and where the request gave up.
+    nativeScanFailStage = 0;
+    nativeScanFailChannel = 0;
+    nativeScanChannelCount = 0;
+    for (size_t i = 0; i < wire.count && i < 64; ++i)
+        nativeScanChannelList[nativeScanChannelCount++] = plan.channels[i];
+    if (wire.count > nitems(wire.channels)) { nativeScanFailStage = 1; return EINVAL; }
     for (size_t i = 0; i < wire.count; ++i) {
         const auto channel = plan.channels[i];
         if (channel >= nitems(sc->sc_ic.ic_channels) || !iwm_channel_is_valid(sc, channel) ||
-            !sc->sc_ic.ic_channels[channel].ic_freq || !isset(sc->sc_ic.ic_chan_avail, channel)) return EINVAL;
+            !sc->sc_ic.ic_channels[channel].ic_freq || !isset(sc->sc_ic.ic_chan_avail, channel)) {
+            nativeScanFailStage = 2;
+            nativeScanFailChannel = channel;
+            return EINVAL;
+        }
         if (plan.probes[i] && (sc->sc_ic.ic_channels[channel].ic_flags &
-            (IEEE80211_CHAN_PASSIVE | IEEE80211_CHAN_DFS))) return EOPNOTSUPP;
+            (IEEE80211_CHAN_PASSIVE | IEEE80211_CHAN_DFS))) { nativeScanFailStage = 3; return EOPNOTSUPP; }
         wire.channels[i] = channel;
     }
     memcpy(wire.source, plan.source, sizeof(wire.source));
     const size_t size = IwmTrial::passiveRequestSize(wire);
-    if (!size) return EINVAL;
+    if (!size) { nativeScanFailStage = 4; return EINVAL; }
     void *request = malloc(size, M_DEVBUF, M_NOWAIT);
-    if (!request) return ENOMEM;
+    if (!request) { nativeScanFailStage = 5; return ENOMEM; }
     const bool fragmented = associated &&
         isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_FRAGMENTED_SCAN);
     nativeCacheDiagnostic.assocScanFragmented = fragmented ? 1 : 0;
     if (!IwmTrial::buildNativeScanRequest(plan, wire.capacity, wire.txAnt, wire.rxAnt,
                                           fragmented, request, size)) {
         ::free(request);
+        nativeScanFailStage = 6;
         return EINVAL;
     }
     nativeScanSink = sink;

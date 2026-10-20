@@ -172,6 +172,10 @@ public:
     const ScanPlan *nativeScanPlan = nullptr;
     ItlScan::LegacyPhy nativeScanCachePhy;
     ItlScan::CacheDiagnostic nativeCacheDiagnostic;
+    uint32_t nativeScanFailStage = 0;
+    uint32_t nativeScanFailChannel = 0;
+    uint32_t nativeScanChannelCount = 0;
+    uint16_t nativeScanChannelList[64] = {};
     bool nativeScanPassthrough = false;
     int nativeScanDone = 0, nativeScanCancel = 0;
     unsigned resets = 0, submits = 0, aborts = 0;

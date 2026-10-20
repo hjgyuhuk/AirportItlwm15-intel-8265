@@ -142,7 +142,13 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     // before allowing reuse of LMAC's notification stream (no wire token).  An
     // associated bgscan leaves the device and the connection running: no
     // reset, and IFF_RUNNING stays set so the data path continues afterwards.
-    if (!associated && !nativeDetached) {
+    //
+    // The UMAC request does not need it: it carries a scan id and its
+    // notifications carry the same one, so the stream stays in sync.  Stopping
+    // the radio there would cost the join a full restart of the firmware, and
+    // the interface would look down in between, which is what made turning
+    // the radio on slow and left the menu bar showing no radio.
+    if (!associated && !nativeDetached && !umac) {
         iwm_stop_device(sc);
         sc->sc_ic.ic_ac.ac_if.if_flags &= ~IFF_RUNNING;
     }

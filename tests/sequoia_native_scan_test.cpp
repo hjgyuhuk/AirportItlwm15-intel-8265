@@ -355,6 +355,10 @@ static void umacRequestTests()
         assert(driver.nativeScanUmac == (scenario == 1 ? 1u : 0u));
         assert(driver.lastCommandId == (scenario == 1 ?
             iwm_cmd_id(IWM_SCAN_REQ_UMAC, IWM_LONG_GROUP, 0) : IWM_SCAN_OFFLOAD_REQUEST_CMD));
+        // The LMAC request has no wire token, so the radio is reset after the
+        // scan. The UMAC request carries one and leaves the radio up, which
+        // is what lets the join reuse it instead of restarting the firmware.
+        assert(driver.resets == (scenario == 1 ? 0u : 1u));
     }
     // The UMAC scan reports its end with its own notification, not the LMAC
     // offload completion.

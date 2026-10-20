@@ -16,6 +16,10 @@ struct IwmNvmDiagnostics {
     uint32_t responseStatus = UINT32_MAX, responseOffset = UINT32_MAX;
     uint32_t responseType = UINT32_MAX, responseLength = UINT32_MAX, payloadBytes = 0;
     uint32_t nvmError = 0, bytesRead = 0, sectionsRead = 0;
+    // Probe build: the channel count as it stood right after the NVM parse,
+    // so a zero count can be attributed to the parse rather than to whatever
+    // cleared the map afterwards.
+    uint32_t channelsAfterParse = UINT32_MAX;
     uint32_t commandQueue = UINT32_MAX, commandIndex = UINT32_MAX, commandBytes = 0;
     uint32_t rxPackets = 0, rxCommand = UINT32_MAX, rxSequence = UINT32_MAX;
     uint32_t ackSeen = 0, ackRejected = 0, rawAckCommand = UINT32_MAX, rawAckSequence = UINT32_MAX;

@@ -132,6 +132,7 @@ bool AirportItlwmSequoiaFirmwareTrial::recordDiagnostics()
         {"SequoiaFirmwareFirstExcludedChannel", fw.firstExcludedChannel},
         {"SequoiaFirmwareNvmBytes", detail.bytesRead},
         {"SequoiaFirmwareNvmSections", detail.sectionsRead},
+        {"SequoiaFirmwareChannelsAfterParse", detail.channelsAfterParse},
         {"SequoiaFirmwareLastCommand", detail.lastCommand},
         {"SequoiaFirmwareAckResult", detail.ackResult},
         {"SequoiaFirmwareAckFlags", detail.ackFlags},
@@ -154,6 +155,26 @@ bool AirportItlwmSequoiaFirmwareTrial::recordDiagnostics()
         {"SequoiaFirmwareTimeoutQueued", detail.timeoutQueued},
     };
     for (const auto &field : fields) recorded = setProperty(field.name, field.value, 32) && recorded;
+    // Probe build: publish the firmware's own section id for every requested
+    // section, so the generation-specific mapping can be recovered from one
+    // run instead of being guessed at.
+    OSDictionary *types = OSDictionary::withCapacity(16);
+    OSDictionary *lengths = OSDictionary::withCapacity(16);
+    if (types && lengths) {
+        for (unsigned i = 0; i < 16; ++i) {
+            if (!(detail.sectionTypeMapValid & (uint32_t(1) << i))) continue;
+            char key[8];
+            snprintf(key, sizeof(key), "%u", i);
+            types->setObject(OSString::withCString(key),
+                OSNumber::withNumber(detail.sectionTypeMap[i], 32));
+            lengths->setObject(OSString::withCString(key),
+                OSNumber::withNumber(detail.sectionLengthMap[i], 32));
+        }
+        recorded = setProperty("SequoiaFirmwareNvmTypeMap", types) && recorded;
+        recorded = setProperty("SequoiaFirmwareNvmLengthMap", lengths) && recorded;
+        types->release();
+        lengths->release();
+    }
     if (fw.nvmResult == 0) {
         unsigned channels = 0;
         for (const auto &channel : hal_->get80211Controller()->ic_channels)

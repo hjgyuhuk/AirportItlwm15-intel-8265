@@ -52,6 +52,10 @@ bool ItlIwm::attachForFirmwareTrial(IOPCIDevice *device)
         nativeDetached || nativeNvmTrial)
         return false;
     nativeFirmwareTrial = true;
+    // Probe build: record the section id mapping for the firmware dialogue
+    // run as well, so the calibration and scan stages can be attributed to a
+    // specific section.
+    nativeNvmDiagnostics.allowSectionTypeMismatch = true;
     return attach(device);
 }
 #endif

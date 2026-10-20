@@ -475,6 +475,18 @@ iwm_nvm_init(struct iwm_softc *sc)
         if (isHardwareTrial()) nativeNvmDiagnostics.phase = "parse-nvm";
 #endif
         err = iwm_parse_nvm_sections(sc, nvm_sections);
+#if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
+        // Probe build: record the channel count the parse produced, before
+        // anything downstream can touch the map.
+        if (isHardwareTrial()) {
+            uint32_t channels = 0;
+            for (unsigned channel = 0; channel < nitems(sc->sc_ic.ic_channels); ++channel) {
+                const auto &entry = sc->sc_ic.ic_channels[channel];
+                if (entry.ic_freq && entry.ic_flags) ++channels;
+            }
+            nativeNvmDiagnostics.channelsAfterParse = channels;
+        }
+#endif
     }
     
     for (i = 0; i < IWM_NVM_NUM_OF_SECTIONS; i++) {

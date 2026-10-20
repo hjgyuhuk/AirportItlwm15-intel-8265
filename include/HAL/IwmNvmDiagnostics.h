@@ -46,6 +46,11 @@ struct IwmNvmDiagnostics {
     // regulatory section, so the channel flag array can be located inside it.
     char regulatoryNonZero[512] = {};
     uint32_t regulatoryNonZeroCount = 0;
+    // Probe build: the TXP group's maximum channel index as the firmware
+    // reports it, and the per-channel PAPD/TXP group the driver picks, so
+    // the group boundaries can be compared against the mapping.
+    char txpGroupMaxIndex[128] = {};
+    char channelGroups[640] = {};
 
     void recordSectionType(uint16_t requested, uint16_t returned, uint16_t length)
     {

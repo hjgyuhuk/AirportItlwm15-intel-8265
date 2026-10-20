@@ -6,6 +6,7 @@
 #include <cstring>
 #include <set>
 #include <vector>
+#include <HAL/IwmNvmDiagnostics.h>
 #include <HAL/IwmFirmwareTrial.h>
 
 #define le16toh(value) (value)
@@ -54,6 +55,8 @@ static void testFree(void *pointer)
 struct ItlIwm {
     bool nativeFirmwareTrial = true, gated = true, eventThread = false;
     IwmFirmwareDiagnostics nativeFirmwareDiagnostics;
+    IwmNvmDiagnostics nativeNvmDiagnostics;
+    bool isHardwareTrial() const { return nativeFirmwareTrial; }
     unsigned replaySubmissions = 0, replayFault = 0;
     int replayError = EIO;
     ItlIwm *getMainWorkLoop() { return this; }

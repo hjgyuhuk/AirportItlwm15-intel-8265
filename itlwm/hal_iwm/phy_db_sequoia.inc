@@ -85,11 +85,39 @@ IwmPhyDbSnapshot ItlIwm::iwm_phy_db_snapshot(struct iwm_softc *sc)
         ++result.channels;
         const unsigned papd = iwm_channel_id_to_papd(channel);
         const unsigned txp = iwm_channel_id_to_txp(sc, channel);
-        if (papd < IWM_NUM_PAPD_CH_GROUPS && txp < IWM_NUM_TXP_CH_GROUPS &&
-            (result.papdMask & (1U << papd)) && (result.txpMask & (1U << txp)))
+        const bool covered = papd < IWM_NUM_PAPD_CH_GROUPS && txp < IWM_NUM_TXP_CH_GROUPS &&
+            (result.papdMask & (1U << papd)) && (result.txpMask & (1U << txp));
+        if (covered)
             ++result.coveredChannels;
         else if (result.firstUncoveredChannel == UINT32_MAX)
             result.firstUncoveredChannel = channel;
+#if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
+        // Probe build: the group the driver picks for every channel, so the
+        // group boundaries the firmware reports can be checked against it.
+        if (isHardwareTrial()) {
+            const size_t used = strlen(nativeNvmDiagnostics.channelGroups);
+            if (used + 16 < sizeof(nativeNvmDiagnostics.channelGroups))
+                snprintf(nativeNvmDiagnostics.channelGroups + used,
+                    sizeof(nativeNvmDiagnostics.channelGroups) - used, "%u.%u.%u.%c ",
+                    channel, papd, txp, covered ? '1' : '0');
+        }
+#endif
     }
+#if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
+    // Probe build: the maximum channel index each TXP group reports, which
+    // is where the firmware says the group ends.
+    if (isHardwareTrial()) {
+        for (unsigned i = 0; i < IWM_NUM_TXP_CH_GROUPS; ++i) {
+            const auto &entry = db.calib_ch_group_txp[i];
+            if (!entry.data || entry.size < sizeof(iwm_phy_db_chg_txp)) continue;
+            const auto *txp = reinterpret_cast<const iwm_phy_db_chg_txp *>(entry.data);
+            const size_t used = strlen(nativeNvmDiagnostics.txpGroupMaxIndex);
+            if (used + 8 < sizeof(nativeNvmDiagnostics.txpGroupMaxIndex))
+                snprintf(nativeNvmDiagnostics.txpGroupMaxIndex + used,
+                    sizeof(nativeNvmDiagnostics.txpGroupMaxIndex) - used, "%u:%u ",
+                    i, le16toh(txp->max_channel_idx));
+        }
+    }
+#endif
     return result;
 }

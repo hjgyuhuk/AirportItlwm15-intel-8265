@@ -67,12 +67,13 @@ static bool buildPassiveRequest(const PassivePlan &plan, void *output, size_t by
     }
     request->flags = htole32((has24 ? IWM_PHY_BAND_24 : 0) |
         (has5 ? IWM_PHY_BAND_5 : 0));
+    // The probe request is laid out the way the firmware expects: a MAC header
+    // of 26 bytes, then the empty SSID element the hardware fills in, then
+    // the per band rate elements, then the data both bands share. The address
+    // in the second slot is the station the scan is directed at, so this stays
+    // a directed probe request rather than the generic one.
     auto *probe = reinterpret_cast<iwm_scan_probe_req_v1 *>(request->data +
         plan.capacity * sizeof(*channels));
-    // The probe request is laid out the way the firmware expects: a MAC header
-    // of 26 bytes, then an empty SSID element the hardware fills in, then the
-    // per band rate sets, then the data both bands share. The firmware places
-    // the SSID element itself, so it has to be told where the header ends.
     probe->buf[0] = 0x40;
     probe->buf[1] = 0x00;
     memset(probe->buf + 4, 0xff, 6);
@@ -83,19 +84,26 @@ static bool buildPassiveRequest(const PassivePlan &plan, void *output, size_t by
     size_t offset = 26;
     probe->buf[offset++] = 0;             // IEEE80211_ELEMID_SSID
     probe->buf[offset++] = 0;             // Empty; the hardware inserts it.
-    // Standard legacy rates, independent of the unattached ic_sup_rates.
-    const uint8_t rates24[] = {1, 8, 0x82, 0x84, 0x8b, 0x96, 12, 18, 24, 36, 50, 4, 48, 72, 96, 108};
-    const uint8_t rates5[] = {1, 8, 0x8c, 18, 0x98, 36, 0xb0, 72, 96, 108};
+    // The per band data is a supported rates element, so it carries the
+    // element id and its length before the rates themselves.
+    const uint8_t rates24[] = {0x02, 0x04, 0x0b, 0x0c, 0x12, 0x18, 0x24,
+        0x30, 0x48, 0x60, 0x6c};
+    const uint8_t rates5[] = {0x0c, 0x12, 0x18, 0x24, 0x30, 0x42, 0x48, 0x60,
+        0x6c};
     for (unsigned band = 0; band < 2; ++band) {
         const bool included = band ? has5 : has24;
         if (!included) continue;
-        probe->band_data[band].offset = htole16(offset);
-        const auto length = band ? sizeof(rates5) : sizeof(rates24);
-        memcpy(probe->buf + offset, band ? rates5 : rates24, length);
-        probe->band_data[band].len = htole16(length);
-        offset += length;
+        const auto *rates = band ? rates5 : rates24;
+        const auto count = band ? sizeof(rates5) : sizeof(rates24);
+        const uint16_t start = static_cast<uint16_t>(offset);
+        probe->band_data[band].offset = htole16(start);
+        probe->buf[offset++] = 1;           // IEEE80211_ELEMID_RATES
+        probe->buf[offset++] = static_cast<uint8_t>(count);
+        memcpy(probe->buf + offset, rates, count);
+        offset += count;
+        probe->band_data[band].len = htole16(static_cast<uint16_t>(offset - start));
     }
-    probe->common_data.offset = htole16(offset);
+    probe->common_data.offset = htole16(static_cast<uint16_t>(offset));
     probe->common_data.len = htole16(0);
     return true;
 }

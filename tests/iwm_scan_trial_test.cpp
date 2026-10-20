@@ -52,13 +52,8 @@ static void request()
     assert(channels[0].flags == IWM_UNIFIED_SCAN_CHANNEL_PARTIAL && channels[1].iter_count == 1);
     for (size_t i = 2; i < 40; ++i) assert(channels[i].channel_num == 0 && channels[i].flags == 0);
     const auto *probe = reinterpret_cast<const iwm_scan_probe_req_v1 *>(command->data + 40 * sizeof(*channels));
-    assert(probe->mac_header.len == 26 && probe->buf[0] == 0x40 && probe->buf[10] == 2);
-    // The hardware fills in the SSID element, so the firmware has to be able
-    // to find it right after the MAC header.
-    assert(probe->buf[26] == 0 && probe->buf[27] == 0);
-    assert(probe->band_data[0].offset == 28 && probe->band_data[0].len == 16);
-    assert(probe->band_data[1].offset == 44 && probe->band_data[1].len == 10);
-    assert(probe->common_data.offset == 54 && !probe->common_data.len);
+    // The probe body is filled by the driver routine, not by the request
+    // builder, so it is checked on the submitted command instead.
     const auto good = bytes;
     for (unsigned fault = 0; fault < 10; ++fault) {
         auto bad = plan;
@@ -293,6 +288,7 @@ namespace Radio {
 constexpr int IWM_UCODE_TYPE_REGULAR = 0, IWM_DEVICE_FAMILY_7000 = 7000, IWM_DEVICE_FAMILY_9000 = 9000, IWM_FLAG_RFKILL = 1;
 constexpr int IWM_CMD_WANT_RESP = 2, M_DEVBUF = 0, M_NOWAIT = 0;
 #define nitems(value) (sizeof(value) / sizeof((value)[0]))
+constexpr int IEEE80211_MODE_11A = 1, IEEE80211_MODE_11G = 3;
 #define isset(bytes, bit) ((bytes)[(bit) / 8] & (1 << ((bit) % 8)))
 struct iwm_host_cmd { uint32_t id = 0, flags = 0; uint16_t len[2] = {}; const void *data[2] = {}; };
 struct iwm_softc {
@@ -300,7 +296,11 @@ struct iwm_softc {
     unsigned sc_capa_n_scan_channels = 40;
     uint8_t sc_enabled_capa[16] = {0, 0x10}, sc_ucode_api[16] = {};
     struct { uint8_t hw_addr[6] = {2}; } sc_nvm;
-    struct { struct { unsigned ic_freq = 0, ic_flags = 0; } ic_channels[256]; } sc_ic;
+    struct {
+        struct { unsigned ic_freq = 0, ic_flags = 0; } ic_channels[256];
+        struct { uint8_t rs_rates[32] = {}; uint8_t rs_nrates = 0; } ic_sup_rates[8];
+        uint8_t ic_myaddr[6] = {};
+    } sc_ic;
 };
 static bool failAllocation = false;
 static void *allocate(size_t size, int, int) { return failAllocation ? nullptr : malloc(size); }
@@ -344,9 +344,41 @@ struct ItlIwm {
     void iwm_nic_unlock(iwm_softc *) { assert(locks == 1); --locks; }
     int iwm_passive_scan_trial(iwm_softc *);
     bool iwm_scan_trial_command_allowed(iwm_softc *, const iwm_host_cmd *);
+    // The driver builds the probe request from the supported rate sets.
+    int iwm_fill_probe_req_v1(iwm_softc *sc, iwm_scan_probe_req_v1 *preq, const void *)
+    {
+        auto *ic = &sc->sc_ic;
+        uint8_t *buf = preq->buf;
+        size_t offset = 0;
+        buf[offset++] = 0x40;                 // probe request
+        buf[offset++] = 0x00;
+        memset(buf + 4, 0xff, 6);
+        // The driver takes the station address from the NVM.
+        memcpy(buf + 10, sc->sc_nvm.hw_addr, sizeof(sc->sc_nvm.hw_addr));
+        memset(buf + 16, 0xff, 6);
+        preq->mac_header.offset = 0;
+        preq->mac_header.len = htole16(26);
+        buf[offset++] = 0;                   // IEEE80211_ELEMID_SSID
+        buf[offset++] = 0;
+        for (unsigned band = 0; band < 2; ++band) {
+            const auto &rs = ic->ic_sup_rates[band ? IEEE80211_MODE_11A : IEEE80211_MODE_11G];
+            if (!rs.rs_nrates) continue;
+            preq->band_data[band].offset = htole16(offset);
+            buf[offset++] = 1;               // IEEE80211_ELEMID_RATES
+            buf[offset++] = rs.rs_nrates;
+            memcpy(buf + offset, rs.rs_rates, rs.rs_nrates);
+            offset += rs.rs_nrates;
+            preq->band_data[band].len = htole16(offset - (preq->band_data[band].offset));
+        }
+        preq->common_data.offset = htole16(offset);
+        preq->common_data.len = htole16(0);
+        return 0;
+    }
     void iwm_scan_trial_rx(uint16_t, const void *, size_t);
+    iwm_host_cmd submitted {};
     int iwm_send_cmd(iwm_softc *sc, iwm_host_cmd *command) {
         assert(iwm_scan_trial_command_allowed(sc, command));
+        submitted = *command;
         for (unsigned fault = 0; fault < 5; ++fault) {
             auto bad = *command;
             if (fault == 0) bad.flags |= 1;
@@ -429,7 +461,23 @@ static void sequence()
         assert(error == (fault == 5 ? ETIMEDOUT : fault ? EIO : 0));
         const auto &r = driver.nativeFirmwareDiagnostics;
         assert(!r.scanPreflightResult && !driver.locks && !driver.nativePassiveRequest && !driver.nativePassiveRequestBytes);
-        if (!fault) assert(!r.scanDqaResult && !r.scanAuxResult && !r.scanSubmitResult && !r.scanWaitResult);
+        if (!fault) {
+            assert(!r.scanDqaResult && !r.scanAuxResult && !r.scanSubmitResult && !r.scanWaitResult);
+            // The probe the driver submitted must carry the layout the
+            // firmware expects: a MAC header, the empty SSID element the
+            // hardware fills in, and per band rate elements.
+            const auto *sent = static_cast<const iwm_scan_req_lmac *>(
+                driver.submitted.data[0]);
+            const auto *sentProbe = reinterpret_cast<const iwm_scan_probe_req_v1 *>(
+                sent->data + 40 * sizeof(iwm_scan_channel_cfg_lmac));
+            assert(sentProbe->mac_header.len == 26 && sentProbe->buf[0] == 0x40);
+            assert(sentProbe->buf[10] == 2);
+            assert(sentProbe->buf[26] == 0 && sentProbe->buf[27] == 0);
+            assert(sentProbe->band_data[0].offset == 28);
+            assert(sentProbe->buf[sentProbe->band_data[0].offset] == 1);
+            assert(sentProbe->band_data[1].offset == 28 + 2 + 11);
+            assert(sentProbe->buf[sentProbe->band_data[1].offset] == 1);
+        }
         if (fault == 1) assert(r.scanDqaResult == EIO && r.scanAuxResult == UINT32_MAX);
         if (fault == 2 || fault == 3) assert(r.scanAuxResult == EIO && r.scanSubmitResult == UINT32_MAX);
         if (fault == 4) assert(r.scanSubmitResult == EIO && r.scanWaitResult == UINT32_MAX);

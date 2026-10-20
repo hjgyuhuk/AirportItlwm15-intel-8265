@@ -319,6 +319,9 @@ public:
     bool nativeNvmAttached = false;
     bool nativeNvmTrial = false;
     bool nativeFirmwareTrial = false;
+    // Probe build: run the scan request this tree builds against the driver's
+    // own scan path, to see whether the firmware accepts that one.
+    bool nativeUpstreamScan = false;
     bool isHardwareTrial() const { return nativeNvmTrial || nativeFirmwareTrial; }
     int nativeNvmTrialError = ENXIO;
     int nativeFirmwareTrialError = ENXIO;

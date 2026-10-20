@@ -306,6 +306,7 @@ static bool failAllocation = false;
 static void *allocate(size_t size, int, int) { return failAllocation ? nullptr : malloc(size); }
 struct ItlIwm {
     bool nativeFirmwareTrial = true, nativeNet80211Attached = false, nativeCalibrationActive = false;
+    bool nativeUpstreamScan = false;
 
     bool iwm_channel_is_valid(struct iwm_softc *sc, uint16_t ch_id)
     {

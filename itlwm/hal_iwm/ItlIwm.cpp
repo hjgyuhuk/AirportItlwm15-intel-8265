@@ -48,6 +48,11 @@ bool ItlIwm::attachForFirmwareTrial(IOPCIDevice *device)
         nativeDetached || nativeNvmTrial)
         return false;
     nativeFirmwareTrial = true;
+    // Probe build: the firmware dialogue can run the driver's own scan
+    // request instead of the one this tree builds.
+    int upstreamScan = 0;
+    if (PE_parse_boot_argn("itlwm_scan_upstream", &upstreamScan, sizeof(upstreamScan)))
+        nativeUpstreamScan = upstreamScan != 0;
     return attach(device);
 }
 #endif

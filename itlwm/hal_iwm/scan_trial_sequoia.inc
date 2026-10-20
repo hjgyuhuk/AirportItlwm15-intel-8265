@@ -51,9 +51,12 @@ bool ItlIwm::iwm_scan_trial_command_allowed(iwm_softc *sc, const iwm_host_cmd *c
                 !memcmp(command->data[0], &expected, sizeof(expected));
         }
     }
-    return !strcmp(phase, "scan-submit") && result.scanAuxResult == 0 &&
-        command->id == IWM_SCAN_OFFLOAD_REQUEST_CMD && !command->flags &&
-        nativePassiveRequest && command->data[0] == nativePassiveRequest &&
+    if (strcmp(phase, "scan-submit") || result.scanAuxResult != 0 ||
+        command->id != IWM_SCAN_OFFLOAD_REQUEST_CMD || command->flags)
+        return false;
+    if (nativeUpstreamScan)
+        return command->data[0] != nullptr && command->len[0] != 0;
+    return nativePassiveRequest && command->data[0] == nativePassiveRequest &&
         command->len[0] == nativePassiveRequestBytes;
 }
 
@@ -154,6 +157,37 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
     }
     if (!error) {
         phase = "scan-submit";
+#if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
+        if (nativeUpstreamScan) {
+            // Probe build: let the driver build the scan request itself, the
+            // way it does for the regular path, so the firmware sees a
+            // request it already accepts on this card. The trial does not
+            // attach to net80211, so the rate sets and the station address
+            // are supplied here.
+            auto *ic = &sc->sc_ic;
+            static const uint8_t rates24[] = {0x02, 0x04, 0x0b, 0x0c, 0x12,
+                0x18, 0x24, 0x30, 0x48, 0x60, 0x6c};
+            static const uint8_t rates5[] = {0x0c, 0x12, 0x18, 0x24, 0x30,
+                0x42, 0x48, 0x60, 0x6c};
+            memcpy(ic->ic_sup_rates[IEEE80211_MODE_11G].rs_rates, rates24,
+                sizeof(rates24));
+            ic->ic_sup_rates[IEEE80211_MODE_11G].rs_nrates = sizeof(rates24);
+            memcpy(ic->ic_sup_rates[IEEE80211_MODE_11A].rs_rates, rates5,
+                sizeof(rates5));
+            ic->ic_sup_rates[IEEE80211_MODE_11A].rs_nrates = sizeof(rates5);
+            IEEE80211_ADDR_COPY(ic->ic_myaddr, sc->sc_nvm.hw_addr);
+            error = iwm_lmac_scan(sc, 0, nullptr);
+            result.scanSubmitResult = error;
+            result.scanWaitResult = error;
+            if (!error) {
+                phase = "scan-wait";
+                error = iwm_wait_status(&nativePassiveDone, 1, &nativePassiveDone,
+                    ItlScan::IwmPassiveTrial::WaitSeconds);
+                result.scanWaitResult = error;
+            }
+            goto scan_done;
+        }
+#endif
         const auto token = nativePassiveScan.begin(plan.channels, plan.count);
         if (!token) error = EBUSY;
         else {
@@ -179,6 +213,7 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
             result.scanWaitResult = error;
         }
     }
+scan_done:
     ::free(request);
     // The owning orchestrator always resets hardware, even on timeout. An
     // abort ACK alone cannot release this scan's DMA/RX ownership.

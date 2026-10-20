@@ -42,6 +42,9 @@ public:
         uint32_t nativeScanFailChannel = 0;
         uint32_t nativeScanChannelCount = 0;
         uint16_t nativeScanChannelList[64] = {};
+        uint32_t nativeScanWireCount = 0, nativeScanWireCapacity = 0;
+        uint32_t nativeScanTxAnt = 0, nativeScanRxAnt = 0;
+        uint32_t nativeScanSourceValid = 0;
         uint32_t submissions = 0;
         uint32_t lastSubmission = UINT32_MAX;
         uint32_t notifications = 0;

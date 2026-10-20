@@ -32,6 +32,9 @@ public:
     uint32_t nativeScanFailChannel = 0;
     uint32_t nativeScanChannelCount = 0;
     uint16_t nativeScanChannelList[64] = {};
+    uint32_t nativeScanWireCount = 0, nativeScanWireCapacity = 0;
+    uint32_t nativeScanTxAnt = 0, nativeScanRxAnt = 0;
+    uint32_t nativeScanSourceValid = 0;
 
     // IWX UMAC supports scanning without resetting the connected firmware.
     virtual bool nativeAssociatedScanSupported() const { return false; }

@@ -288,6 +288,11 @@ void AirportItlwm::publishNativeScanDiagnostics()
     provider->setProperty("ItlwmNativeScanFailStage", d.nativeScanFailStage, 32);
     provider->setProperty("ItlwmNativeScanFailChannel", d.nativeScanFailChannel, 32);
     provider->setProperty("ItlwmNativeScanChannelCount", d.nativeScanChannelCount, 32);
+    provider->setProperty("ItlwmNativeScanWireCount", d.nativeScanWireCount, 32);
+    provider->setProperty("ItlwmNativeScanWireCapacity", d.nativeScanWireCapacity, 32);
+    provider->setProperty("ItlwmNativeScanTxAnt", d.nativeScanTxAnt, 32);
+    provider->setProperty("ItlwmNativeScanRxAnt", d.nativeScanRxAnt, 32);
+    provider->setProperty("ItlwmNativeScanSourceValid", d.nativeScanSourceValid, 32);
     {
         char list[192] = {};
         size_t used = 0;

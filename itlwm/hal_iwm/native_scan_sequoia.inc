@@ -65,6 +65,12 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
         wire.channels[i] = channel;
     }
     memcpy(wire.source, usable.source, sizeof(wire.source));
+    // Probe build: the values every size check looks at.
+    nativeScanWireCount = wire.count;
+    nativeScanWireCapacity = wire.capacity;
+    nativeScanTxAnt = wire.txAnt;
+    nativeScanRxAnt = wire.rxAnt;
+    nativeScanSourceValid = ItlScan::validUnicast(wire.source) ? 1 : 0;
     const size_t size = IwmTrial::passiveRequestSize(wire);
     if (!size) { nativeScanFailStage = 4; return EINVAL; }
     void *request = malloc(size, M_DEVBUF, M_NOWAIT);

@@ -12,7 +12,8 @@
 constexpr unsigned IWM_NVM_DEFAULT_CHUNK_SIZE = 2048, IWM_NVM_READ_OPCODE = 0;
 constexpr unsigned IWM_NVM_ACCESS_CMD = 0x88, IWM_CMD_WANT_RESP = 2;
 constexpr unsigned IWM_CMD_SEND_IN_RFKILL = 4, IWM_CMD_RESP_MAX = 4096, IWM_CMD_FAILED_MSK = 0x40;
-struct iwm_softc {};
+constexpr int IWM_DEVICE_FAMILY_7000 = 7000, IWM_DEVICE_FAMILY_8000 = 8000;
+struct iwm_softc { int sc_device_family = IWM_DEVICE_FAMILY_7000; };
 struct iwm_nvm_access_cmd { uint8_t op_code, target; uint16_t type, offset, length; };
 struct iwm_nvm_access_resp { uint16_t offset, length, type, status; uint8_t data[0]; };
 struct iwm_rx_packet { size_t payload; struct { uint8_t flags; } hdr; alignas(8) uint8_t data[4096]; };

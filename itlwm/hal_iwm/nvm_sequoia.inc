@@ -1,3 +1,16 @@
+// The 8000 family (8260/8265, firmware 36) numbers its NVM sections in a
+// 0x5A00-based id space, while the 7000 family (7260/7265, firmware 17)
+// uses the section id verbatim. Measured on a 8265 with the NVM probe:
+// 1->0x5A01, 3->0x5A03, 4->0x5A04, 5->0x5A05, 10->0x5A0A, 12->0x5A0C, so
+// the mapping is a fixed base rather than a per-section table. The 9000
+// family keeps its own space and is not remapped.
+static inline uint16_t iwm_nvm_wire_section(struct iwm_softc *sc, uint16_t section)
+{
+    if (sc && sc->sc_device_family == IWM_DEVICE_FAMILY_8000)
+        return uint16_t(section + 0x5A00);
+    return section;
+}
+
 int ItlIwm::iwm_nvm_read_chunk(struct iwm_softc *sc, uint16_t section,
     uint16_t offset, uint16_t length, uint8_t *data, uint16_t *len)
 {
@@ -7,10 +20,11 @@ int ItlIwm::iwm_nvm_read_chunk(struct iwm_softc *sc, uint16_t section,
     *len = 0;
     auto *diagnostics = isHardwareTrial() ? &nativeNvmDiagnostics : nullptr;
     if (diagnostics) diagnostics->beginRead(section, offset, length);
+    const uint16_t wireSection = iwm_nvm_wire_section(sc, section);
     struct iwm_nvm_access_cmd request = {};
     request.offset = htole16(offset);
     request.length = htole16(length);
-    request.type = htole16(section);
+    request.type = htole16(wireSection);
     request.op_code = IWM_NVM_READ_OPCODE;
     struct iwm_host_cmd command = {};
     command.id = IWM_NVM_ACCESS_CMD;
@@ -51,11 +65,9 @@ int ItlIwm::iwm_nvm_read_chunk(struct iwm_softc *sc, uint16_t section,
             // Reference: Linux v6.12 iwl_nvm_read_chunk (NOT_VALID_ADDRESS).
             error = offset && le16toh(response->status) == 1 ? 0 : ENOENT;
         } else if (le16toh(response->offset) != offset ||
-            // Probe build: the firmware answers with its own section id, and
-            // that id space differs between firmware generations. The mapping
-            // is recorded for every section, and the strict "same id" rule is
-            // only lifted for the explicit NVM probe run.
-            (le16toh(response->type) != section &&
+            // The firmware answers with the id of the section it actually
+            // served, which is the mapped id on the 8000 family.
+            (le16toh(response->type) != wireSection &&
              !(diagnostics && diagnostics->allowSectionTypeMismatch)) ||
             bytes > length || bytes > iwm_rx_packet_payload_len(packet) - sizeof(*response)) {
             error = EIO;

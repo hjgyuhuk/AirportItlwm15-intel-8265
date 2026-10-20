@@ -125,7 +125,8 @@ static uint32_t le32_to_cpup(const uint32_t *p) { uint32_t value; memcpy(&value,
 #include "../itlwm/hal_iwm/scan_request_sequoia.inc"
 #define nitems(array) (sizeof(array) / sizeof((array)[0]))
 #define isset(array, bit) ((array)[(bit) / 8] & (1u << ((bit) % 8)))
-enum { IWM_UCODE_TYPE_REGULAR = 0, IWM_DEVICE_FAMILY_7000 = 1, IFF_RUNNING = 1, IEEE80211_S_INIT = 0,
+enum { IWM_UCODE_TYPE_REGULAR = 0, IWM_DEVICE_FAMILY_7000 = 1, IWM_DEVICE_FAMILY_9000 = 9000,
+       IFF_RUNNING = 1, IEEE80211_S_INIT = 0,
        IEEE80211_S_RUN = 4,
        IWM_FLAG_SCANNING = 1, IWM_FLAG_BGSCAN = 2, IWM_FLAG_RFKILL = 4,
        IEEE80211_CHAN_PASSIVE = 1, IEEE80211_CHAN_DFS = 2 };

@@ -9,8 +9,13 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     // admits S_SCAN requests but the worker only ever saw INIT on the r224
     // boot, and that pairing is unchanged here.
     const bool associated = plan.associatedScan();
+    // Probe build: the 7000-family restriction is lifted. The 8265 is an
+    // 8000-family part on firmware 36, and the LMAC scan request this path
+    // builds was reverse engineered against firmware 17. Every other
+    // precondition below is unchanged.
     if (!plan.valid() || !sink.valid() || nativeScanSink.valid() || isHardwareTrial() ||
-        !nativeNet80211Attached || !commandTransportReady || sc->sc_device_family != IWM_DEVICE_FAMILY_7000 ||
+        !nativeNet80211Attached || !commandTransportReady ||
+        sc->sc_device_family == IWM_DEVICE_FAMILY_9000 ||
         sc->sc_mqrx_supported || sc->sc_uc_current != IWM_UCODE_TYPE_REGULAR ||
         sc->cmdqid != IWM_DQA_CMD_QUEUE ||
         !(sc->sc_ic.ic_ac.ac_if.if_flags & IFF_RUNNING) ||

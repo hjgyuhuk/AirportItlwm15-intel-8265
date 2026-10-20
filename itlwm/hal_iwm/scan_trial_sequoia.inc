@@ -51,7 +51,11 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
     phase = "scan-preflight";
     // This first radio trial is specifically firmware 17's LMAC + DQA + v7
     // station ABI. Never send it to UMAC, IWX, MQ RX or another station format.
-    if (sc->sc_device_family != IWM_DEVICE_FAMILY_7000 || sc->sc_mqrx_supported ||
+    // Probe build: the 7000-family restriction is lifted for the 8000 family
+    // (8265 / firmware 36) so the experiment can show whether the LMAC scan
+    // request is still valid on the newer firmware generation. Every other
+    // preflight condition below is unchanged and still has to pass.
+    if (sc->sc_device_family == IWM_DEVICE_FAMILY_9000 || sc->sc_mqrx_supported ||
         !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DQA_SUPPORT) ||
         isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_UMAC_SCAN) ||
         isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE) || sc->cmdqid != IWM_DQA_CMD_QUEUE ||

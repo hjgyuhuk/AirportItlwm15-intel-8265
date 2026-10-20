@@ -10,8 +10,13 @@ int ItlIwm::iwm_native_join_start(const SequoiaWCL::JoinRequestSnapshot &snapsho
     auto *ic = &sc->sc_ic;
     if (nativeStateError) return nativeStateError;
     if (nativeJoinProgress.active()) return EBUSY;
+    // Probe build: the 7000-family restriction is lifted for the 8000 family.
+    // The AUTH frame this path queues was derived from firmware 17's station
+    // ABI; the 8265 runs firmware 36, so the exchange may still be invalid
+    // there. Every other precondition below is unchanged.
     if (!commandTransportReady || !(ic->ic_if.if_flags & IFF_RUNNING) ||
-        sc->ns_nstate != IEEE80211_S_INIT || sc->sc_device_family != IWM_DEVICE_FAMILY_7000 ||
+        sc->ns_nstate != IEEE80211_S_INIT ||
+        sc->sc_device_family == IWM_DEVICE_FAMILY_9000 ||
         sc->sc_mqrx_supported || sc->sc_uc_current != IWM_UCODE_TYPE_REGULAR ||
         (sc->sc_flags & (IWM_FLAG_SHUTDOWN | IWM_FLAG_HW_ERR | IWM_FLAG_RFKILL))) return ENXIO;
     ieee80211_node *candidate = nullptr;

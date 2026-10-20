@@ -63,6 +63,17 @@ def bundle_info(config):
         personality["CFBundleIdentifier"] = config["identifier"]
     info["IOKitPersonalities"]["NetworkController"]["IOProbeScore"] = 70000
     info["IOKitPersonalities"]["itlwm"]["IOPCIMatch"] = config["pci_match"]
+    # Probe build: the diagnostic personality only attaches when the
+    # itlwm-sequoia-firmware boot argument is present, so it stays inert in a
+    # normal boot. It publishes the firmware dialogue results as properties
+    # instead of creating a network interface.
+    info["IOKitPersonalities"]["AirportItlwmSequoiaFirmwareTrial"] = {
+        "CFBundleIdentifier": config["identifier"],
+        "IOClass": "AirportItlwmSequoiaFirmwareTrial",
+        "IOProbeScore": 70000,
+        "IOProviderClass": "IOPCIDevice",
+        "IOPCIMatch": config["trial_pci_match"],
+    }
     return info
 
 
@@ -119,6 +130,11 @@ def main():
              str(REPO / "itlwm/firmware")], "firmware")
         sources = sources_from_project(REPO)
         sources = [firmware if p.name == "FwBinary.cpp" else p for p in sources]
+        # Probe build: the diagnostic personality is not part of the upstream
+        # release target, so it is compiled in explicitly here.
+        trial_source = REPO / "AirportItlwm/SequoiaFirmwareTrial.cpp"
+        if trial_source not in sources:
+            sources.append(trial_source)
         compiler = subprocess.check_output(["xcrun", "--find", "clang++"], text=True).strip()
         compiled = []
         for index, source in enumerate(sources):

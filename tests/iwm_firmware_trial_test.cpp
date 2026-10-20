@@ -199,7 +199,10 @@ static void stagesAndFailures()
         if (rejection == 1) driver.eventThread = true;
         if (rejection == 2) driver.nativeNvmTrial = true;
         if (rejection == 3) driver.nativeNet80211Attached = true;
-        if (rejection == 4) state.sc_device_family = 8000;
+        // The 8000 family (8265, firmware 36) is now accepted so the probe can
+        // exercise it; the MQ RX parts keep their own station ABI and stay
+        // rejected.
+        if (rejection == 4) state.sc_device_family = 9000;
         if (rejection == 5) driver.owned = false;
         assert(driver.iwm_run_firmware_trial(&state) == (rejection == 5 ? EBUSY : EPERM));
         assert(!driver.step && !driver.stops && !driver.nativeHardwareStarted);

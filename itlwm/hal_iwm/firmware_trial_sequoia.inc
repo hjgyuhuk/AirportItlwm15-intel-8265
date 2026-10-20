@@ -1,9 +1,14 @@
 int ItlIwm::iwm_run_firmware_trial(struct iwm_softc *sc)
 {
+    // Probe build: the upstream trial was gated to the 7000 family, which runs
+    // firmware 17 (iwm-7265-17). The 8265 is an 8000-family part running
+    // firmware 36, so the firmware dialogue below has to be exercised against
+    // it to learn where the two generations actually diverge. The 9000 family
+    // (MQ RX parts) keeps its own station ABI and stays excluded.
     if (!getMainWorkLoop()->inGate() || getMainWorkLoop()->onThread() ||
         !nativeFirmwareTrial || nativeNvmTrial || nativeNet80211Attached ||
         nativeFirmwareDiagnostics.stage != IwmFirmwareStage::Resources ||
-        sc->sc_device_family != IWM_DEVICE_FAMILY_7000)
+        sc->sc_device_family == IWM_DEVICE_FAMILY_9000)
         return EPERM;
     FirmwareLease operation(this);
     if (!operation) return EBUSY;

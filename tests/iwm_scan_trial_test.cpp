@@ -431,7 +431,7 @@ static void sequence()
         if (fault == 0) sc.sc_mqrx_supported = 1;
         if (fault == 1) sc.sc_enabled_capa[0] = 4; // UMAC
         if (fault == 2) sc.sc_enabled_capa[1] = 0; // No DQA
-        if (fault == 3) sc.sc_ucode_api[3] = 0x40; // STA_TYPE
+        if (fault == 3) sc.sc_flags = IWM_FLAG_RFKILL;
         if (fault == 4) sc.sc_capa_n_scan_channels = 1;
         if (fault == 5) sc.sc_ic.ic_channels[144] = {5720, 1};
         if (fault == 6) sc.sc_nvm.hw_addr[0] = 1;
@@ -439,6 +439,15 @@ static void sequence()
         assert(driver.iwm_passive_scan_trial(&sc) != 0 && !driver.steps && !driver.locks);
         assert(driver.nativeFirmwareDiagnostics.scanDqaResult == UINT32_MAX);
         failAllocation = false;
+    }
+    // Station type support is an extra capability rather than a different
+    // station format, so reporting it must not block the trial.
+    {
+        ItlIwm driver;
+        iwm_softc sc;
+        sc.sc_ic.ic_channels[1] = {2412, 1}; sc.sc_ic.ic_channels[36] = {5180, 1};
+        sc.sc_ucode_api[3] = 0x40; // STA_TYPE
+        assert(driver.iwm_passive_scan_trial(&sc) == 0);
     }
     ItlIwm driver;
     iwm_softc sc;

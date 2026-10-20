@@ -49,17 +49,35 @@ int ItlIwm::iwm_passive_scan_trial(iwm_softc *sc)
     auto &phase = nativeNvmDiagnostics.phase;
     IwmTrial::PassivePlan plan;
     phase = "scan-preflight";
-    // This first radio trial is specifically firmware 17's LMAC + DQA + v7
-    // station ABI. Never send it to UMAC, IWX, MQ RX or another station format.
-    // Probe build: the 7000-family restriction is lifted for the 8000 family
-    // (8265 / firmware 36) so the experiment can show whether the LMAC scan
-    // request is still valid on the newer firmware generation. Every other
-    // preflight condition below is unchanged and still has to pass.
-    if (sc->sc_device_family == IWM_DEVICE_FAMILY_9000 || sc->sc_mqrx_supported ||
-        !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DQA_SUPPORT) ||
-        isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_UMAC_SCAN) ||
-        isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE) || sc->cmdqid != IWM_DQA_CMD_QUEUE ||
-        !result.phy.complete() || !commandTransportReady || (sc->sc_flags & IWM_FLAG_RFKILL)) {
+    // This first radio trial was written for firmware 17's LMAC + DQA + v7
+    // station ABI. The 8000 family runs firmware 36 and reports one more
+    // capability: it supports station type assignment. That is an extra
+    // capability rather than a different station format, so it no longer
+    // blocks the trial. Never send it to UMAC, IWX or MQ RX parts.
+    const bool familyOk = sc->sc_device_family != IWM_DEVICE_FAMILY_9000;
+    const bool mqrxOk = !sc->sc_mqrx_supported;
+    const bool dqaOk = isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_DQA_SUPPORT);
+    const bool umacOk = !isset(sc->sc_enabled_capa, IWM_UCODE_TLV_CAPA_UMAC_SCAN);
+    const bool staTypeOk = true;
+    const bool cmdqOk = sc->cmdqid == IWM_DQA_CMD_QUEUE;
+    const bool phyOk = result.phy.complete();
+    const bool transportOk = commandTransportReady;
+    const bool rfkillOk = !(sc->sc_flags & IWM_FLAG_RFKILL);
+#if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
+    if (isHardwareTrial()) {
+        auto &diagnostics = nativeNvmDiagnostics;
+        diagnostics.scanPreflightMask = (familyOk ? 0u : 1u) | (mqrxOk ? 0u : 2u) |
+            (dqaOk ? 0u : 4u) | (umacOk ? 0u : 8u) | (staTypeOk ? 0u : 16u) |
+            (cmdqOk ? 0u : 32u) | (phyOk ? 0u : 64u) | (transportOk ? 0u : 128u) |
+            (rfkillOk ? 0u : 256u);
+        for (size_t i = 0; i < nitems(sc->sc_ucode_api); ++i)
+            snprintf(diagnostics.ucodeApiBits + i * 2, 3, "%02x", sc->sc_ucode_api[i]);
+        for (size_t i = 0; i < nitems(sc->sc_enabled_capa); ++i)
+            snprintf(diagnostics.enabledCapaBits + i * 2, 3, "%02x", sc->sc_enabled_capa[i]);
+    }
+#endif
+    if (!familyOk || !mqrxOk || !dqaOk || !umacOk || !staTypeOk || !cmdqOk || !phyOk ||
+        !transportOk || !rfkillOk) {
         result.scanPreflightResult = ENOTSUP;
         return ENOTSUP;
     }

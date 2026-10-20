@@ -55,6 +55,11 @@ struct IwmNvmDiagnostics {
     // the group header layout can be read instead of assumed.
     char papdGroupBytes[256] = {};
     char txpGroupBytes[512] = {};
+    // Probe build: the firmware capability and API bitmaps the scan preflight
+    // decided on, plus which of its conditions held.
+    char ucodeApiBits[96] = {};
+    char enabledCapaBits[96] = {};
+    uint32_t scanPreflightMask = 0;
 
     void recordSectionType(uint16_t requested, uint16_t returned, uint16_t length)
     {

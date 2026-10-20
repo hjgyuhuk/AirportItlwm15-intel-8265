@@ -43,6 +43,11 @@ public:
     // Which request flavor the last scan used: 0 = the LMAC request this
     // tree builds, 1 = the UMAC request the firmware asks for.
     uint32_t nativeScanUmac = 0;
+    // Whether the last scan left the radio running.
+    uint32_t nativeScanKeepRadio = 0;
+    // The notification the firmware actually sent, before it was converted
+    // into the shape the layer above understands.
+    uint32_t nativeScanRawTerminal = 0, nativeScanRawIteration = 0, nativeScanRawStatus = 0;
 
     // IWX UMAC supports scanning without resetting the connected firmware.
     virtual bool nativeAssociatedScanSupported() const { return false; }

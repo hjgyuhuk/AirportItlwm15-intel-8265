@@ -195,7 +195,11 @@ public:
     uint16_t nativeScanUsableList[64] = {};
     uint32_t nativeScanSubmitReject = 0;
     uint32_t nativeScanUmac = 0;
+    uint32_t nativeScanKeepRadio = 0;
+    bool nativeScanKeepRadioEnabled = true;
     uint32_t lastCommandId = 0;
+    uint8_t nativeScanNotifScratch[16 + 8 * 40] = {};
+    uint32_t nativeScanRawTerminal = 0, nativeScanRawIteration = 0, nativeScanRawStatus = 0;
     uint16_t nativeScanChannelList[64] = {};
     bool nativeScanPassthrough = false;
     int nativeScanDone = 0, nativeScanCancel = 0;
@@ -379,6 +383,67 @@ static void umacRequestTests()
     }
 }
 
+// The layer above understands one shape of scan notification. The AX HAL
+// turns its own family's notifications into that shape, and so does this one:
+// the UMAC completion becomes the LMAC-shaped offload completion and the
+// UMAC iteration becomes the LMAC-shaped iteration.
+static void umacNotificationTests()
+{
+    for (unsigned fault = 0; fault < 4; ++fault) {
+        ScanDelivery::Slot slots[2];
+        NativeScan scan;
+        assert(scan.delivery.setStorage(slots, 2));
+        prepare(scan);
+        assert(scan.begin());
+        ItlIwm driver;
+        ItlScan::NativeSink sink;
+        sink.context = &scan;
+        sink.submitted = [](void *p, ItlScan::Submission s) { static_cast<NativeScan *>(p)->submitted(s); };
+        sink.notification = [](void *p, uint16_t c, const void *b, size_t s) { static_cast<NativeScan *>(p)->notification(c, b, s); };
+        sink.failed = [](void *p, ItlScan::Outcome o) { static_cast<NativeScan *>(p)->failed(o); };
+        sink.stopped = [](void *p) { static_cast<NativeScan *>(p)->hardwareStopped(); };
+        driver.nativeScanSink = sink;
+        scan.submitted(ItlScan::Submission::Accepted);
+        uint8_t iteration[16 + 8 * 2] = {};
+        iteration[4] = 2;                       // the channels the firmware scanned
+        iteration[5] = 1;                       // its status
+        iteration[16] = 1; iteration[17] = 1;   // channel 1, 2.4 GHz
+        iteration[24] = 36; iteration[25] = 0; // channel 36, 5 GHz
+        uint8_t complete[16] = {};
+        complete[6] = 1;                        // its status
+        if (fault == 0) iteration[4] = 41;      // more channels than the buffer holds
+        if (fault == 1) iteration[4] = 3;       // more channels than were asked for
+        if (fault == 2) complete[6] = 9;        // a status the layer does not know
+        const bool iterationOk = driver.iwm_native_scan_rx(0xb5, iteration, sizeof(iteration));
+        const bool completeOk = driver.iwm_native_scan_rx(0x0f, complete, sizeof(complete));
+        if (fault == 0) {
+            // A count that does not fit the buffer is refused outright.
+            assert(!iterationOk);
+            continue;
+        }
+        assert(iterationOk);
+        if (fault == 1) {
+            // More channels than were asked for is malformed evidence.
+            assert(scan.diagnostics.coverageMalformed == 1);
+            assert(scan.diagnostics.coverageIterations == 0);
+            continue;
+        }
+        assert(scan.diagnostics.coverageIterations == 1);
+        assert(scan.diagnostics.coverageScanned == 2);
+        assert(completeOk);
+        assert(scan.diagnostics.terminals == 1);
+        // The layer saw the LMAC-shaped offload completion.
+        assert(scan.diagnostics.lastTerminalCode == 0x6d);
+        ItlScan::Completion completion;
+        assert(scan.delivery.completion(completion));
+        if (fault == 2) {
+            assert(completion.outcome == ItlScan::Outcome::TransportError);
+        } else {
+            assert(completion.outcome == ItlScan::Outcome::Success);
+        }
+    }
+}
+
 static void associatedTests()
 {
     // r225 associated bgscan admission on the HAL boundary: RUN + BSS admits,
@@ -515,6 +580,7 @@ int main()
     sessionTests();
     transportTests();
     umacRequestTests();
+    umacNotificationTests();
     associatedTests();
     puts("Native WCL scan: 1,000 session traces, 13 production HAL worker/regulatory scenarios and associated bgscan admission passed");
 }

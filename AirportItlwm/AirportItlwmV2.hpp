@@ -392,6 +392,10 @@ public:
     uint32_t nativeScanPostStatus = 0;
     IOTimerEventSource *nativeScanTimer = nullptr;
     bool nativeScanTimerAdded = false;
+    // The delay before the delivery is tried again. A delivery that cannot
+    // drain must not spin the timer, so the delay grows while it stays busy
+    // and resets as soon as it drains.
+    uint32_t nativeScanBackoffMs = 10;
     // airportd sends a legacy scan ioctl after the native WCL request. These
     // counters are updated atomically because that ioctl may arrive off-gate.
     uint32_t nativeLegacyScanRequests = 0;

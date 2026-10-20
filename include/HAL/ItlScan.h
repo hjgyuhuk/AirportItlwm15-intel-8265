@@ -102,6 +102,19 @@ public:
         return true;
     }
 
+    // The scan ended without the firmware reporting it. The host side is
+    // done with the request, so the slot can be reused. A late notification
+    // is not ours any more: the slot is drained.
+    bool abandon(uint64_t token)
+    {
+        if (!matches(token) || current_.drained) return false;
+        current_.drained = true;
+        current_.terminalSeen = true;
+        if (!current_.outcomeKnown) finish(Outcome::TransportError);
+        retireIfDone();
+        return true;
+    }
+
     bool beginAbort(uint64_t token)
     {
         if (!matches(token) || current_.drained || current_.resetRequired ||

@@ -1,3 +1,6 @@
+// Whether a scan leaves the radio running. A firmware family that answers
+// the request in a form carrying a scan id does not need the radio reset the
+// other one needs, because its notification stream stays in sync.
 int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::NativeSink &sink)
 {
     auto *sc = &com;
@@ -148,7 +151,9 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     // the radio there would cost the join a full restart of the firmware, and
     // the interface would look down in between, which is what made turning
     // the radio on slow and left the menu bar showing no radio.
-    if (!associated && !nativeDetached && !umac) {
+    const bool keepRadio = umac && nativeScanKeepRadioEnabled;
+    nativeScanKeepRadio = keepRadio ? 1 : 0;
+    if (!associated && !nativeDetached && !keepRadio) {
         iwm_stop_device(sc);
         sc->sc_ic.ic_ac.ac_if.if_flags &= ~IFF_RUNNING;
     }
@@ -174,16 +179,42 @@ bool ItlIwm::iwm_native_scan_rx(uint16_t code, const void *payload, size_t size)
     if (code != IWM_REPLY_RX_PHY_CMD && code != IWM_REPLY_RX_MPDU_CMD &&
         code != IWM_SCAN_ITERATION_COMPLETE && code != IWM_SCAN_OFFLOAD_COMPLETE &&
         code != IWM_SCAN_ITERATION_COMPLETE_UMAC && code != IWM_SCAN_COMPLETE_UMAC) return false;
-    nativeScanSink.notification(nativeScanSink.context, code, payload, size);
-    iwm_native_scan_cache_rx(code, payload, size);
+    // The layer above understands one shape of scan notification. The AX HAL
+    // turns its own family's notifications into that shape, and so does this
+    // one: the UMAC completion becomes the LMAC-shaped offload completion and
+    // the UMAC iteration becomes the LMAC-shaped iteration. The two families
+    // lay their notifications out the same way, so the conversion is a copy.
+    uint16_t normalized = code;
+    const void *body = payload;
+    size_t bodySize = size;
+    if (code == IWM_SCAN_COMPLETE_UMAC) {
+        if (size < 12) return false;
+        memset(nativeScanNotifScratch, 0, 12);
+        nativeScanNotifScratch[2] = static_cast<const uint8_t *>(payload)[6];
+        nativeScanRawTerminal = code;
+        nativeScanRawStatus = nativeScanNotifScratch[2];
+        normalized = IWM_SCAN_OFFLOAD_COMPLETE;
+        body = nativeScanNotifScratch;
+        bodySize = 12;
+    } else if (code == IWM_SCAN_ITERATION_COMPLETE_UMAC) {
+        if (size < 16) return false;
+        const auto *bytes = static_cast<const uint8_t *>(payload);
+        const size_t count = bytes[4];
+        if (count > 40 || 12 + count * 8 > sizeof(nativeScanNotifScratch)) return false;
+        memset(nativeScanNotifScratch, 0, 12 + count * 8);
+        nativeScanNotifScratch[0] = static_cast<uint8_t>(count);
+        nativeScanNotifScratch[1] = bytes[5];
+        memcpy(nativeScanNotifScratch + 12, bytes + 16, count * 8);
+        nativeScanRawIteration = code;
+        normalized = IWM_SCAN_ITERATION_COMPLETE;
+        body = nativeScanNotifScratch;
+        bodySize = 12 + count * 8;
+    }
+    nativeScanSink.notification(nativeScanSink.context, normalized, body, bodySize);
+    iwm_native_scan_cache_rx(normalized, body, bodySize);
     ItlScan::ScanNotification notification;
-    // The two request families report their end differently: the LMAC one
-    // ends with the offload completion, the UMAC one with its own.
-    const bool terminal = code == IWM_SCAN_OFFLOAD_COMPLETE ?
-        ItlScan::decodeIwmNotification(ItlScan::IwmNotification::LmacComplete, payload, size, notification) :
-        code == IWM_SCAN_COMPLETE_UMAC ?
-        ItlScan::decodeIwmNotification(ItlScan::IwmNotification::UmacComplete, payload, size, notification) :
-        false;
+    const bool terminal = normalized == IWM_SCAN_OFFLOAD_COMPLETE &&
+        ItlScan::decodeIwmNotification(ItlScan::IwmNotification::LmacComplete, body, bodySize, notification);
     if (terminal) {
         nativeScanDone = 1;
         getMainCommandGate()->commandWakeup(&nativeScanDone, false);

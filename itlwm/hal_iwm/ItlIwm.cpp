@@ -167,6 +167,14 @@ attach(IOPCIDevice *device)
 #endif
     pci.pa_tag = device;
     pci.workloop = getMainWorkLoop();
+    // Whether a scan leaves the radio running. The default follows the
+    // request family; the boot argument overrides it so both behaviours can
+    // be compared on the same build.
+    {
+        int keepRadio = 0;
+        if (PE_parse_boot_argn("itlwm_scan_keep_radio", &keepRadio, sizeof(keepRadio)))
+            nativeScanKeepRadioEnabled = keepRadio != 0;
+    }
     bool attached;
 #if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
     {

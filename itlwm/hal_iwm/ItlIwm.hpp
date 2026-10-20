@@ -313,6 +313,14 @@ public:
     int iwm_wait_status(const int *, int, void *, unsigned, const int * = nullptr);
     bool commandTransportReady = false;
     bool nativeNet80211Attached = false;
+    // Whether a scan leaves the radio running. The default follows the
+    // request family; the boot argument overrides it.
+    bool nativeScanKeepRadioEnabled = true;
+    // Scratch for the notification the layer above understands. The AX HAL
+    // keeps the same one for the same reason.
+    uint8_t nativeScanNotifScratch[16 + 8 * 40] = {};
+    // The notification the firmware actually sent, before it was converted.
+    uint32_t nativeScanRawTerminal = 0, nativeScanRawIteration = 0, nativeScanRawStatus = 0;
     bool nativeHardwareStarted = false;
     bool nativeSystemQueue = false;
     bool nativeDetached = false;

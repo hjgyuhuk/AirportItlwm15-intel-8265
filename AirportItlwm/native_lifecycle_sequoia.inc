@@ -296,6 +296,17 @@ void AirportItlwm::publishNativeScanDiagnostics()
     provider->setProperty("ItlwmNativeScanUsableCount", d.nativeScanUsableCount, 32);
     provider->setProperty("ItlwmNativeScanSubmitReject", d.nativeScanSubmitReject, 32);
     provider->setProperty("ItlwmNativeScanUmac", d.nativeScanUmac, 32);
+    provider->setProperty("ItlwmNativeScanKeepRadio", d.nativeScanKeepRadio, 32);
+    provider->setProperty("ItlwmNativeScanLastTerminalCode", d.lastTerminalCode, 32);
+    provider->setProperty("ItlwmNativeScanRawTerminalCode", d.rawTerminalCode, 32);
+    provider->setProperty("ItlwmNativeScanRawIterationCode", d.rawIterationCode, 32);
+    provider->setProperty("ItlwmNativeScanRawTerminalStatus", d.rawTerminalStatus, 32);
+    provider->setProperty("ItlwmNativeScanCoverageRequested", d.coverageRequested, 32);
+    provider->setProperty("ItlwmNativeScanCoverageIterations", d.coverageIterations, 32);
+    provider->setProperty("ItlwmNativeScanCoverageScanned", d.coverageScanned, 32);
+    provider->setProperty("ItlwmNativeScanCoverageTerminalStatus", d.coverageTerminalStatus, 32);
+    provider->setProperty("ItlwmNativeScanCoverageIterationStatus", d.coverageIterationStatus, 32);
+    provider->setProperty("ItlwmNativeScanCoverageMalformed", d.coverageMalformed, 32);
     {
         char list[192] = {};
         size_t used = 0;

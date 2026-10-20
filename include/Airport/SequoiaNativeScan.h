@@ -33,6 +33,15 @@ public:
         uint32_t lastRequestResult = UINT32_MAX;
         uint32_t requestedChannels = 0;
         uint32_t requestActive = 0;
+        // The notification the terminal arrived as, and the one the firmware
+        // actually sent before it was converted.
+        uint32_t lastTerminalCode = 0;
+        uint32_t rawTerminalCode = 0, rawIterationCode = 0, rawTerminalStatus = 0;
+        // What the coverage tracker saw: how many channels were asked for,
+        // how many the firmware reported, and the statuses it ended with.
+        uint32_t coverageRequested = 0, coverageIterations = 0, coverageScanned = 0;
+        uint32_t coverageTerminalStatus = UINT32_MAX, coverageIterationStatus = UINT32_MAX;
+        uint32_t coverageMalformed = 0;
         uint32_t workerStarts = 0;
         uint32_t enableResult = UINT32_MAX;
         uint32_t nativeScanResult = UINT32_MAX;
@@ -48,6 +57,7 @@ public:
         uint32_t nativeScanUsableCount = 0;
         uint16_t nativeScanUsableList[64] = {};
         uint32_t nativeScanSubmitReject = 0;
+        uint32_t nativeScanKeepRadio = 0;
         uint32_t nativeScanUmac = 0;
         uint32_t submissions = 0;
         uint32_t lastSubmission = UINT32_MAX;
@@ -366,6 +376,8 @@ public:
                     outcome = ItlScan::Outcome::TransportError;
                 if (diagnostics.terminals != UINT32_MAX) ++diagnostics.terminals;
                 diagnostics.lastOutcome = static_cast<uint32_t>(outcome);
+                diagnostics.lastTerminalCode = code;
+                refreshCoverageDiagnostics();
                 delivery.terminal(ItlScan::Firmware::LMAC, 0, outcome);
                 phy_ = {};
             }
@@ -435,10 +447,34 @@ public:
         if (counter != UINT32_MAX) ++counter;
     }
 
+    // The coverage tracker's evidence, for the diagnostics.
+    const ItlScan::IwmPassiveTrial::Evidence &coverageEvidence() const { return coverage_.evidence; }
+
+    // What the coverage tracker saw belongs with the scan that produced it,
+    // not with the layer that copies the diagnostics afterwards.
+    void refreshCoverageDiagnostics()
+    {
+        const auto &evidence = coverage_.evidence;
+        diagnostics.coverageRequested = evidence.requested;
+        diagnostics.coverageIterations = evidence.iterations;
+        diagnostics.coverageScanned = evidence.scanned;
+        diagnostics.coverageTerminalStatus = evidence.terminalStatus;
+        diagnostics.coverageIterationStatus = evidence.iterationStatus;
+        diagnostics.coverageMalformed = evidence.malformed;
+    }
+
     void workerFinished()
     {
         if (!submitted_) submitted(ItlScan::Submission::NotSent);
         workerActive_ = false;
+        refreshCoverageDiagnostics();
+        // A completion has to exist however the scan ended. Without one the
+        // delivery stays busy and every later request is refused, which
+        // leaves the caller waiting and the driver spinning. If the terminal
+        // notification never arrived, say so instead of saying nothing.
+        ItlScan::Completion completion;
+        if (!delivery.completion(completion) && delivery.busy())
+            delivery.abandon(token_);
     }
 
     // Called once after the synchronous HAL scan returns and before the first

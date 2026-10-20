@@ -379,6 +379,10 @@ void AirportItlwm::runNativeScan()
                 hal->nativeScanUsableList, sizeof(nativeScan.diagnostics.nativeScanUsableList));
             nativeScan.diagnostics.nativeScanSubmitReject = hal->nativeScanSubmitReject;
             nativeScan.diagnostics.nativeScanUmac = hal->nativeScanUmac;
+            nativeScan.diagnostics.nativeScanKeepRadio = hal->nativeScanKeepRadio;
+            nativeScan.diagnostics.rawTerminalCode = hal->nativeScanRawTerminal;
+            nativeScan.diagnostics.rawIterationCode = hal->nativeScanRawIteration;
+            nativeScan.diagnostics.rawTerminalStatus = hal->nativeScanRawStatus;
             memcpy(nativeScan.diagnostics.nativeScanChannelList,
                 hal->nativeScanChannelList, sizeof(nativeScan.diagnostics.nativeScanChannelList));
             setProperty("SequoiaNativeScanError", static_cast<uint64_t>(error), 32);
@@ -689,7 +693,19 @@ void AirportItlwm::nativeScanTimerAction(OSObject *owner, IOTimerEventSource *ti
     if (!self->nativeWclCompatR162)
         publishGlueScheduleDiagnostics(self);
     if (self->nativeScan.workerActive() || self->nativeScan.delivery.busy() ||
-        __atomic_load_n(&self->nativeScanPostMask, __ATOMIC_ACQUIRE)) timer->setTimeoutMS(10);
+        __atomic_load_n(&self->nativeScanPostMask, __ATOMIC_ACQUIRE)) {
+        // A delivery that cannot drain must not spin the timer. The delay
+        // grows while it stays busy and resets as soon as it drains.
+        if (self->nativeScan.delivery.busy() || self->nativeScan.workerActive()) {
+            self->nativeScanBackoffMs *= 2;
+            if (self->nativeScanBackoffMs > 200) self->nativeScanBackoffMs = 200;
+        } else {
+            self->nativeScanBackoffMs = 10;
+        }
+        timer->setTimeoutMS(self->nativeScanBackoffMs);
+    } else {
+        self->nativeScanBackoffMs = 10;
+    }
 }
 
 void AirportItlwm::nativeScanPostWorker(thread_call_param_t owner, thread_call_param_t)

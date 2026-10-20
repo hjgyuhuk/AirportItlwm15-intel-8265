@@ -87,6 +87,15 @@ public:
     }
 
     bool beginAbort(uint64_t token) { return !posting_ && lifecycle_.beginAbort(token); }
+    // The request is over and the firmware never reported its end. The slot
+    // is released so a later request is admitted.
+    bool abandon(uint64_t token)
+    {
+        if (posting_ || !lifecycle_.abandon(token)) return false;
+        closed_ = true;
+        return true;
+    }
+
     bool transportFailed(uint64_t token)
     {
         if (posting_ || !lifecycle_.transportFailed(token)) return false;

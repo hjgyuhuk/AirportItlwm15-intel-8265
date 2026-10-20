@@ -376,11 +376,22 @@ struct ItlIwm {
         command.id = IWM_SCD_QUEUE_CFG; command.data[0] = &queue; command.len[0] = sizeof(queue);
         const int error = iwm_send_cmd(sc, &command);
         if (error) return error;
-        iwm_add_sta_cmd_v7 station = {};
-        station.sta_id = IWM_AUX_STA_ID; station.tid_disable_tx = 0xffff;
-        station.mac_id_n_color = IWM_FW_CMD_ID_AND_COLOR(IWM_MAC_INDEX_AUX, 0);
-        station.tfd_queue_msk = 1 << IWM_DQA_AUX_QUEUE;
-        command.id = IWM_ADD_STA; command.data[0] = &station; command.len[0] = sizeof(station);
+        // The station type capability decides the layout, the same way the
+        // driver picks it.
+        if (isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE)) {
+            iwm_add_sta_cmd station = {};
+            station.sta_id = IWM_AUX_STA_ID; station.tid_disable_tx = 0xffff;
+            station.mac_id_n_color = IWM_FW_CMD_ID_AND_COLOR(IWM_MAC_INDEX_AUX, 0);
+            station.tfd_queue_msk = 1 << IWM_DQA_AUX_QUEUE;
+            station.station_type = IWM_STA_AUX_ACTIVITY;
+            command.id = IWM_ADD_STA; command.data[0] = &station; command.len[0] = sizeof(station);
+        } else {
+            iwm_add_sta_cmd_v7 station = {};
+            station.sta_id = IWM_AUX_STA_ID; station.tid_disable_tx = 0xffff;
+            station.mac_id_n_color = IWM_FW_CMD_ID_AND_COLOR(IWM_MAC_INDEX_AUX, 0);
+            station.tfd_queue_msk = 1 << IWM_DQA_AUX_QUEUE;
+            command.id = IWM_ADD_STA; command.data[0] = &station; command.len[0] = sizeof(station);
+        }
         command.flags = IWM_CMD_WANT_RESP;
         return iwm_send_cmd(sc, &command);
     }

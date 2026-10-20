@@ -24,12 +24,30 @@ bool ItlIwm::iwm_scan_trial_command_allowed(iwm_softc *sc, const iwm_host_cmd *c
                 !memcmp(command->data[0], &expected, sizeof(expected));
         }
         if (command->id == IWM_ADD_STA) {
+            // The station type capability decides the layout of the command.
+            // The 8000 family reports it and takes the larger command, the
+            // 7000 family does not and takes the v7 one. The driver already
+            // picks the same way, so the expectation follows it.
+            if (isset(sc->sc_ucode_api, IWM_UCODE_TLV_API_STA_TYPE)) {
+                iwm_add_sta_cmd expected = {};
+                expected.tid_disable_tx = htole16(0xffff);
+                expected.mac_id_n_color =
+                    htole32(IWM_FW_CMD_ID_AND_COLOR(IWM_MAC_INDEX_AUX, 0));
+                expected.sta_id = IWM_AUX_STA_ID;
+                expected.tfd_queue_msk = htole32(1 << IWM_DQA_AUX_QUEUE);
+                expected.station_type = IWM_STA_AUX_ACTIVITY;
+                return command->flags == IWM_CMD_WANT_RESP &&
+                    command->len[0] == sizeof(expected) &&
+                    !memcmp(command->data[0], &expected, sizeof(expected));
+            }
             iwm_add_sta_cmd_v7 expected = {};
             expected.tid_disable_tx = htole16(0xffff);
-            expected.mac_id_n_color = htole32(IWM_FW_CMD_ID_AND_COLOR(IWM_MAC_INDEX_AUX, 0));
+            expected.mac_id_n_color =
+                htole32(IWM_FW_CMD_ID_AND_COLOR(IWM_MAC_INDEX_AUX, 0));
             expected.sta_id = IWM_AUX_STA_ID;
             expected.tfd_queue_msk = htole32(1 << IWM_DQA_AUX_QUEUE);
-            return command->flags == IWM_CMD_WANT_RESP && command->len[0] == sizeof(expected) &&
+            return command->flags == IWM_CMD_WANT_RESP &&
+                command->len[0] == sizeof(expected) &&
                 !memcmp(command->data[0], &expected, sizeof(expected));
         }
     }

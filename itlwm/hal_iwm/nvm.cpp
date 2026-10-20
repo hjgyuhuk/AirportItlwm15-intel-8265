@@ -485,6 +485,27 @@ iwm_nvm_init(struct iwm_softc *sc)
                 if (entry.ic_freq && entry.ic_flags) ++channels;
             }
             nativeNvmDiagnostics.channelsAfterParse = channels;
+            // Probe build: keep the leading words of the regulatory and PHY
+            // SKU sections so the channel flag layout can be read directly.
+            const auto *regulatory = nvm_sections[IWM_NVM_SECTION_TYPE_REGULATORY].data;
+            if (regulatory) {
+                const uint16_t *words = reinterpret_cast<const uint16_t *>(regulatory);
+                for (unsigned i = 0; i < 48; ++i) {
+                    snprintf(nativeNvmDiagnostics.regulatoryWords + i * 4, 5, "%04x",
+                        le16_to_cpup(words + i));
+                    if (le16_to_cpup(words + i) & IWM_NVM_CHANNEL_VALID)
+                        ++nativeNvmDiagnostics.regulatoryValidFlags;
+                }
+            }
+            const auto *phySku = nvm_sections[IWM_NVM_SECTION_TYPE_PHY_SKU].data;
+            if (phySku) {
+                const uint16_t *words = reinterpret_cast<const uint16_t *>(phySku);
+                for (unsigned i = 0; i < 8; ++i)
+                    snprintf(nativeNvmDiagnostics.phySkuWords + i * 4, 5, "%04x",
+                        le16_to_cpup(words + i));
+                nativeNvmDiagnostics.skuValue = le32_to_cpup(
+                    reinterpret_cast<const uint32_t *>(words + IWM_SKU_8000));
+            }
         }
 #endif
     }

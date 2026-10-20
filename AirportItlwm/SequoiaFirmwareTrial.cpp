@@ -134,6 +134,8 @@ bool AirportItlwmSequoiaFirmwareTrial::recordDiagnostics()
         {"SequoiaFirmwareNvmSections", detail.sectionsRead},
         {"SequoiaFirmwareChannelsAfterParse", detail.channelsAfterParse},
         {"SequoiaFirmwareLastCommand", detail.lastCommand},
+        {"SequoiaFirmwareRegulatoryValidFlags", detail.regulatoryValidFlags},
+        {"SequoiaFirmwareSkuValue", detail.skuValue},
         {"SequoiaFirmwareAckResult", detail.ackResult},
         {"SequoiaFirmwareAckFlags", detail.ackFlags},
         {"SequoiaFirmwareAckBytes", detail.ackBytes},
@@ -155,6 +157,8 @@ bool AirportItlwmSequoiaFirmwareTrial::recordDiagnostics()
         {"SequoiaFirmwareTimeoutQueued", detail.timeoutQueued},
     };
     for (const auto &field : fields) recorded = setProperty(field.name, field.value, 32) && recorded;
+    recorded = setProperty("SequoiaFirmwareRegulatoryWords", detail.regulatoryWords) && recorded;
+    recorded = setProperty("SequoiaFirmwarePhySkuWords", detail.phySkuWords) && recorded;
     // Probe build: publish the firmware's own section id for every requested
     // section, so the generation-specific mapping can be recovered from one
     // run instead of being guessed at.

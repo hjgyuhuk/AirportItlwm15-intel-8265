@@ -40,6 +40,14 @@ struct IwmNvmDiagnostics {
     // production path keeps the strict "same id" rule.
     bool allowSectionTypeMismatch = false;
 
+    // Probe build: the first words of the regulatory and PHY SKU sections.
+    // These hold the channel flags and the band capabilities, never a MAC
+    // address or any other identifier.
+    char regulatoryWords[192] = {};
+    char phySkuWords[64] = {};
+    uint32_t skuValue = UINT32_MAX;
+    uint32_t regulatoryValidFlags = 0;
+
     void recordSectionType(uint16_t requested, uint16_t returned, uint16_t length)
     {
         if (requested >= 16) return;

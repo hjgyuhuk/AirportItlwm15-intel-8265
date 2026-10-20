@@ -195,6 +195,13 @@ struct iwm_tx_ring {
 };
 #ifndef IWM_SCAN_TRANSPORT_INTEGRATION
 constexpr unsigned IWM_PHY_DB_CMD = 0x6c, IWM_PHY_DB_CFG = 1, IWM_PHY_DB_CALIB_NCH = 2;
+#ifndef IWM_SCAN_TRANSPORT_INTEGRATION
+constexpr int IWM_FW_PAGING_BLOCK_CMD = 0x4f, IWM_LONG_GROUP = 0x1;
+static inline uint32_t iwm_cmd_id(uint8_t opcode, uint8_t groupid, uint8_t version)
+{
+    return opcode + (uint32_t(groupid) << 8) + (uint32_t(version) << 16);
+}
+#endif
 constexpr unsigned IWM_PHY_DB_CALIB_CHG_PAPD = 4, IWM_PHY_DB_CALIB_CHG_TXP = 5;
 struct iwm_phy_db_cmd { uint16_t type, length; };
 struct iwm_phy_db_chg_txp { uint32_t space; uint16_t max_channel_idx; } __attribute__((packed));

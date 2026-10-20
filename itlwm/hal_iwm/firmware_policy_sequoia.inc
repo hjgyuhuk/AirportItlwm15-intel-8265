@@ -3,6 +3,15 @@ bool ItlIwm::iwm_firmware_trial_command_allowed(iwm_softc *sc, const iwm_host_cm
     const auto stage = nativeFirmwareDiagnostics.stage;
     if (stage == IwmFirmwareStage::Scan)
         return iwm_scan_trial_command_allowed(sc, command);
+    if (stage == IwmFirmwareStage::Regular) {
+        // The regular firmware image of this family carries the CPU2 paging
+        // image, and the driver hands that image over in blocks while the
+        // regular firmware runs. That transfer is the only command the stage
+        // sends, so it gets a rule of its own instead of the INIT firmware
+        // rule the calibration stages use.
+        return command && command->id ==
+            iwm_cmd_id(IWM_FW_PAGING_BLOCK_CMD, IWM_LONG_GROUP, 0);
+    }
     const bool configuration = stage == IwmFirmwareStage::Configuration;
     if (!command || !command->data[0] || (command->flags & IWM_CMD_ASYNC) ||
         (configuration ? (sc->sc_uc_current != IWM_UCODE_TYPE_REGULAR || nativeCalibrationActive ||

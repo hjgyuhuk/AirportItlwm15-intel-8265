@@ -26,6 +26,13 @@ echo "== 5. 主路径 provider 的阶段属性（第 3 级） =="
 ioreg -r -c IOPCIEDeviceWrapper -l 2>/dev/null \
   | grep -oE '"ItlwmNative[A-Za-z]*" = [^,]*' | sort | tee "$OUT/05-native-stage.txt"
 
+echo "== 5b. 电源管理（睡眠/唤醒）相关诊断 =="
+# 唤醒路径失败时，enableAdapter 的返回码会发布在这里。
+# 0 = 成功；其它值 = 哪一条守卫挡住了 radio 重启。
+ioreg -r -c IOPCIEDeviceWrapper -l 2>/dev/null \
+  | grep -oE '"(SequoiaNativePower[A-Za-z]*|ItlwmNativePower[A-Za-z]*|ItlwmNativeEnableRefused|ItlwmNativeBSDOwner|ItlwmNativeRadioTransition|ItlwmNativeState[A-Za-z]*)" = [^,]*' \
+  | sort | tee "$OUT/05b-power-management.txt"
+
 echo "== 6. NVRAM 面包屑 =="
 nvram -p 2>/dev/null | grep -iE "itlwm" | tee "$OUT/06-nvram.txt"
 
@@ -51,3 +58,4 @@ echo "      configuration → 天线/PHY DB/蓝牙配置阶段"
 echo "      scan       → 被动扫描阶段"
 echo "      complete   → 全部通过（8000 移植可行！）"
 echo "  第 3 级 (main)     看 05: ItlwmNativeStage / ItlwmNativeLastStage / ItlwmNativeHal"
+echo "  睡眠/唤醒          看 05b: SequoiaNativePowerOnError（0 = radio 成功重启）"

@@ -1422,11 +1422,21 @@ IOReturn AirportItlwm::enableAdapter(IONetworkInterface *netif)
         return _fWorkloop->runAction([](OSObject *owner, void *interface, void *, void *, void *) -> IOReturn {
             return static_cast<AirportItlwm *>(owner)->enableAdapter(static_cast<IONetworkInterface *>(interface));
         }, this, netif);
+    // Each guard gets its own number. A wake that cannot bring the radio back
+    // leaves the reason in the registry, so one sleep cycle is enough to tell
+    // which condition refused the request.
+    const auto refuse = [this](uint64_t reason) -> IOReturn {
+        if (auto *provider = getProvider())
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeEnableRefused", reason, 32);
+        return kIOReturnNotReady;
+    };
     // Skywalk publishes the BSD ifnet through Apple's client, without a custom
     // IONetworkInterface child. Require its real ifnet before enabling radio.
-    if (!nativeRadioAvailable() || !watchdogTimer || !_fCommandGate ||
-        (nativeSkywalkBSDOwner ? (!fNetIf || !fNetIf->getBSDInterface()) : !netif) ||
-        !fHalService || !fHalService->getNativeHal()) return kIOReturnNotReady;
+    if (!nativeRadioAvailable()) return refuse(1);
+    if (!watchdogTimer || !_fCommandGate) return refuse(2);
+    if (nativeSkywalkBSDOwner ? (!fNetIf || !fNetIf->getBSDInterface()) : !netif)
+        return refuse(3);
+    if (!fHalService || !fHalService->getNativeHal()) return refuse(4);
     // A duplicate request does not start a radio transition. Connected joins
     // keep busy set for their entire lifetime; they must not make an already-on
     // radio report Busy to Apple's power clients.
@@ -1438,14 +1448,18 @@ IOReturn AirportItlwm::enableAdapter(IONetworkInterface *netif)
     if (auto *provider = getProvider())
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativePowerAlreadyOn", alreadyOn, 32);
     if (alreadyOn) return kIOReturnSuccess;
-    if (nativeJoin.busy || nativeScan.workerActive()) return kIOReturnBusy;
-    if (_fWorkloop->onThread()) return kIOReturnCannotLock;
+    if (nativeJoin.busy || nativeScan.workerActive()) return refuse(5);
+    if (_fWorkloop->onThread()) return refuse(6);
     nativeRadioTransition = true;
     const auto result = fHalService->getNativeHal()->nativeEnable(netif);
     nativeRadioTransition = false;
     _fCommandGate->commandWakeup(&nativeRadioTransition, false);
-    if (result != kIOReturnSuccess) return result;
-    if (!nativeRadioAvailable()) return kIOReturnNotReady;
+    if (result != kIOReturnSuccess) {
+        if (auto *provider = getProvider())
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeEnableRefused", 7, 32);
+        return result;
+    }
+    if (!nativeRadioAvailable()) return refuse(8);
     return kIOReturnSuccess; // Native scan workers do not use net80211's watchdog.
 #else
     fHalService->enable(netif);
@@ -1752,6 +1766,11 @@ void AirportItlwm::setPowerStateOn()
         _fCommandGate->commandSleep(&nativeRadioTransition, THREAD_UNINT);
     IOReturn result = kIOReturnSuccess;
     ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOnCleanupRetries", static_cast<uint64_t>(0), 32);
+    // A wake that finds the radio off has to bring it back. Record the two
+    // inputs to that decision, so a refusal can be told apart from a wake that
+    // never tried: the user's radio preference and the native interface state.
+    ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOnUserRadio", power_state ? 1 : 0, 32);
+    ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOnNativeAvailable", nativeAvailable() ? 1 : 0, 32);
     if (power_state && nativeAvailable()) {
         // A drained pre-sleep join can still await its final WCL notification.
         // The join timer retries that notification, but cannot initialize the

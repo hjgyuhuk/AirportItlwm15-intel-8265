@@ -1,5 +1,6 @@
 // Native ABI bridges, re-audited against 24H23 during host migration.
 #include <IOKit/IOService.h>
+#include <HAL/ItlDiagnostics.h>
 #include <IOKit/IOWorkLoop.h>
 #include <libkern/c++/OSArray.h>
 #include <libkern/c++/OSDictionary.h>
@@ -348,6 +349,7 @@ bool itlwmDumpScanManagerHandlers(void *interface, uint64_t *count,
 // Returns the enqueue admission verdict so the caller can publish/log it once.
 bool itlwmPublishQueueState(IOService *target, const char *prefix, void *queue)
 {
+#if SEQUOIA_DIAGNOSTICS
     if (!target || !prefix || !queue) return false;
     struct QueueField {
         const char *suffix;
@@ -391,6 +393,10 @@ bool itlwmPublishQueueState(IOService *target, const char *prefix, void *queue)
     strlcat(key, "BSDStack", sizeof(key));
     target->setProperty(key, read<uint64_t>(queue, 0x78) != 0);
     return ready;
+#else
+    (void)target; (void)prefix; (void)queue;
+    return false;
+#endif
 }
 
 // r228 A: IOSkywalkFamily declares an IOKit personality for
@@ -419,6 +425,7 @@ bool itlwmPublishInterfaceChildren(IOService *target, void *interface, unsigned 
         const OSMetaClass *meta = child->getMetaClass();
         const char *name = meta ? meta->getClassName() : nullptr;
         if (!name) continue;
+#if SEQUOIA_DIAGNOSTICS
         if (seen < maxChildren) {
             char key[64];
             strlcpy(key, "ItlwmNativeChild", sizeof(key));
@@ -426,6 +433,7 @@ bool itlwmPublishInterfaceChildren(IOService *target, void *interface, unsigned 
             strlcat(key, digit, sizeof(key));
             target->setProperty(key, name);
         }
+#endif
         ++seen;
         if (strcmp(name, "IOSkywalkNetworkBSDClient") != 0) continue;
         clientFound = true;
@@ -433,26 +441,26 @@ bool itlwmPublishInterfaceChildren(IOService *target, void *interface, unsigned 
         // +0xf8 the ifnet gatedPrepareNexus stored, +0xd0 the nexus instance the
         // kernel returned, +0xb8 the nexus controller. +0x144 is set as start's
         // last step and +0x28 is the service's enabled byte.
-        target->setProperty("ItlwmNativeBsdClient",
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdClient",
                             static_cast<uint64_t>(reinterpret_cast<uintptr_t>(child)), 64);
-        target->setProperty("ItlwmNativeBsdClientInterface",
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdClientInterface",
                             static_cast<uint64_t>(reinterpret_cast<uintptr_t>(read<void *>(child, 0xe8))), 64);
-        target->setProperty("ItlwmNativeBsdClientInfo",
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdClientInfo",
                             static_cast<uint64_t>(reinterpret_cast<uintptr_t>(read<void *>(child, 0xf0))), 64);
-        target->setProperty("ItlwmNativeBsdClientIfnet",
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdClientIfnet",
                             static_cast<uint64_t>(reinterpret_cast<uintptr_t>(read<void *>(child, 0xf8))), 64);
-        target->setProperty("ItlwmNativeBsdClientNexus",
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdClientNexus",
                             static_cast<uint64_t>(reinterpret_cast<uintptr_t>(read<void *>(child, 0xd0))), 64);
-        target->setProperty("ItlwmNativeBsdClientController",
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdClientController",
                             static_cast<uint64_t>(reinterpret_cast<uintptr_t>(read<void *>(child, 0xb8))), 64);
         const uint32_t state = (read<uint8_t>(child, 0x144) ? 1u : 0u) |
                                (read<uint8_t>(child, 0x28) ? 2u : 0u);
-        target->setProperty("ItlwmNativeBsdClientState", state, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdClientState", state, 32);
     }
     children->release();
     if (count) *count = seen;
-    target->setProperty("ItlwmNativeChildCount", seen, 32);
-    target->setProperty("ItlwmNativeBsdClientPresent", clientFound);
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeChildCount", seen, 32);
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdClientPresent", clientFound);
     return clientFound;
 }
 
@@ -737,7 +745,7 @@ void *itlwmCreatePeerWithDiagnostics(IOService *interface, IOService *controller
     auto *preflight = OSDictionary::withCapacity(16);
     if (!history || !preflight) {
         OSSafeReleaseNULL(history); OSSafeReleaseNULL(preflight);
-        evidence->setProperty("ItlwmNativePeerFailure", "diagnostic-allocation");
+        ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerFailure", "diagnostic-allocation");
         return nullptr;
     }
     // Called from the family's real createPeerManager slot AFTER start has
@@ -763,8 +771,8 @@ void *itlwmCreatePeerWithDiagnostics(IOService *interface, IOService *controller
         name && read<void *>(iface, 0x78) && !read<void *>(iface, 0x28) &&
         !read<void *>(iface, 0x68);
     if (!safe) {
-        evidence->setProperty("ItlwmNativePeerPreflight", preflight);
-        evidence->setProperty("ItlwmNativePeerFailure", "interface-or-fault-adapter-precondition");
+        ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerPreflight", preflight);
+        ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerFailure", "interface-or-fault-adapter-precondition");
         preflight->release(); history->release();
         return nullptr;
     }
@@ -772,10 +780,10 @@ void *itlwmCreatePeerWithDiagnostics(IOService *interface, IOService *controller
     number(preflight, "queue_depth", depth);
     // Observe the real input only. Capacity probes would mutate/allocate Apple
     // queue state and are not an independent, side-effect-free parameter test.
-    evidence->setProperty("ItlwmNativePeerPreflight", preflight);
+    ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerPreflight", preflight);
     preflight->release();
     if (!depth || depth > 0xffff) {
-        evidence->setProperty("ItlwmNativePeerFailure", "invalid-queue-depth");
+        ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerFailure", "invalid-queue-depth");
         history->release();
         return nullptr;
     }
@@ -788,7 +796,7 @@ void *itlwmCreatePeerWithDiagnostics(IOService *interface, IOService *controller
         auto *record = OSDictionary::withCapacity(32);
         if (!record) { history->release(); return nullptr; }
         word(record, "mode", "primary");
-        evidence->setProperty("ItlwmNativePeerFailure", "initializer-in-progress");
+        ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerFailure", "initializer-in-progress");
         auto *manager = OSMetaClass::allocClassWithName("IO80211PeerManager");
         bool ok = manager && peerInit(manager, nullptr, interface);
         const void *ivars = manager ? read<void *>(manager, 0x18) : nullptr;
@@ -799,7 +807,7 @@ void *itlwmCreatePeerWithDiagnostics(IOService *interface, IOService *controller
         number(record, "event_sources_ready", read<uint8_t>(ivars, 0x6b9));
         const char *boundary = ok ? "complete" : (manager ? failureBoundary(ivars, interfaceId) : "manager-allocation");
         word(record, "boundary", boundary);
-        evidence->setProperty("ItlwmNativePeerFailure", boundary);
+        ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerFailure", boundary);
         if (ok) {
             result = manager; // Family start consumes the allocation reference.
             word(record, "cleanup", "ownership-transferred-to-interface");
@@ -816,11 +824,11 @@ void *itlwmCreatePeerWithDiagnostics(IOService *interface, IOService *controller
         // Publish only after all mutations: ioreg can serialize this collection
         // concurrently. Its retained dictionary must remain immutable.
         history->setObject(record);
-        evidence->setProperty("ItlwmNativePeerAttempts", history);
+        ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerAttempts", history);
         record->release();
     }
     history->release();
-    evidence->setProperty("ItlwmNativePeerBuilt", result != nullptr);
+    ITLWM_PUBLISH_DIAGNOSTIC(evidence, "ItlwmNativePeerBuilt", result != nullptr);
     return result;
 }
 
@@ -882,9 +890,11 @@ void itlwmPublishBsdClientProbeSample(IOService *target, void *interface, unsign
                  static_cast<unsigned long long>(poolRx), rxType,
                  static_cast<unsigned long long>(link));
     }
+#if SEQUOIA_DIAGNOSTICS
     char key[40];
     snprintf(key, sizeof(key), "ItlwmNativeBsdProbe%02u", seq);
     target->setProperty(key, value);
+#endif
 }
 
 // r231: the r230 timer lost the race. r229's synchronous census, microseconds
@@ -969,6 +979,7 @@ bool itlwmBsdBurstSample(IOService *target, void *interface, unsigned iteration)
     }
     if (strcmp(body, bsdBurstLast) == 0) return false;
     strlcpy(bsdBurstLast, body, sizeof(bsdBurstLast));
+#if SEQUOIA_DIAGNOSTICS
     if (bsdBurstSlots < 16) {
         char value[304];
         snprintf(value, sizeof(value), "s=%u %s", iteration, body);
@@ -977,20 +988,21 @@ bool itlwmBsdBurstSample(IOService *target, void *interface, unsigned iteration)
         target->setProperty(key, value);
         ++bsdBurstSlots;
     }
+#endif
     return true;
 }
 
 void itlwmBsdBurstFinalize(IOService *target)
 {
     if (!target) return;
-    target->setProperty("ItlwmNativeBsdBurstIters",
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdBurstIters",
                         static_cast<unsigned long long>(bsdBurstIters), 32);
-    target->setProperty("ItlwmNativeBsdBurstHits",
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdBurstHits",
                         static_cast<unsigned long long>(bsdBurstHits), 32);
-    target->setProperty("ItlwmNativeBsdBurstFirst",
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdBurstFirst",
                         static_cast<unsigned long long>(bsdBurstFirst), 32);
-    target->setProperty("ItlwmNativeBsdBurstSlots",
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdBurstSlots",
                         static_cast<unsigned long long>(bsdBurstSlots), 32);
-    target->setProperty("ItlwmNativeBsdBurstDone", true);
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdBurstDone", true);
 }
 #endif

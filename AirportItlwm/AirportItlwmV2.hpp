@@ -11,6 +11,8 @@
 
 #include "Apple80211.h"
 
+#include <HAL/ItlDiagnostics.h>
+
 #include "IOKit/network/IOGatedOutputQueue.h"
 #include <libkern/c++/OSString.h>
 #include <libkern/c++/OSDictionary.h>
@@ -304,6 +306,7 @@ public:
     // Keep the phase/count on the provider so a boot can prove the ordering
     // without relying on IOLog surviving a reset.
     void announceNativeDriverAvailable(uint32_t phase);
+
     // Read-only registration boundary snapshot.  This records the objects
     // Apple uses to hand an interface from Skywalk to IO80211/CoreWLAN; it
     // never invokes an unverified private registration entry point.

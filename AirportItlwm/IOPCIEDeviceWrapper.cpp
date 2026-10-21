@@ -14,6 +14,7 @@
 #include "ItlIwn.hpp"
 #if __IO80211_TARGET >= __MAC_15_0
 #include <HAL/SequoiaTrialPolicy.h>
+#include <HAL/ItlDiagnostics.h>
 #include <libkern/version.h>
 #endif
 // The peer manager is built from the native lifecycle instead: this translation
@@ -78,11 +79,15 @@ probe(IOService *provider, SInt32 *score)
         return NULL;
 #if __IO80211_TARGET >= __MAC_15_0
     int nativeOptIn = 0;
+#if SEQUOIA_DIAGNOSTICS
+    // The diagnostic personalities are not part of a release build, so the
+    // arguments that select them are not looked for.
     int diagnostic = 0;
     const char *diagnosticArguments[] = {
         "itlwm-sequoia-probe", "itlwm-sequoia-nvm", "itlwm-sequoia-firmware"};
     for (const char *argument : diagnosticArguments)
         if (PE_parse_boot_argn(argument, &diagnostic, sizeof(diagnostic))) return nullptr;
+#endif
     if (!PE_parse_boot_argn("itlwm_native", &nativeOptIn, sizeof(nativeOptIn)) ||
         !SequoiaTrial::allowed(nativeOptIn, version_major, version_minor, version,
             device->configRead16(kIOPCIConfigVendorID), device->configRead16(kIOPCIConfigDeviceID)))
@@ -155,7 +160,7 @@ start(IOService *provider)
 #endif
         return false;
     }
-    IOLog("%s::super start succeed\n", getName());
+    ITLWM_LOG("%s::super start succeed\n", getName());
     UInt8 builtIn = 0;
     setProperty("built-in", &builtIn, sizeof(builtIn));
     PMinit();
@@ -166,7 +171,7 @@ start(IOService *provider)
         // Losing the controller to a diagnostic would be worse than the early
         // start this defers, so publish exactly as before when the deferral
         // cannot be armed.
-        IOLog("%s::publishing immediately (deferred publish unavailable)\n", getName());
+        ITLWM_LOG("%s::publishing immediately (deferred publish unavailable)\n", getName());
         registerService();
     }
 #else
@@ -284,7 +289,7 @@ void IOPCIEDeviceWrapper::publishAction(thread_call_param_t param0, thread_call_
         IOSleep(kPublishPollMillis);
     }
     if (__atomic_load_n(&self->publishCancelled, __ATOMIC_RELAXED)) return;
-    IOLog("%s::publishing after %s wait (%u ms); the controller starts only now\n",
+    ITLWM_LOG("%s::publishing after %s wait (%u ms); the controller starts only now\n",
           self->getName(), reason, static_cast<unsigned>(kPublishFallbackPolls) * kPublishPollMillis);
     self->registerService();
 }
@@ -294,7 +299,7 @@ bool IOPCIEDeviceWrapper::startDeferredPublish()
     if (publishCall) return true;
     int immediate = 0;
     if (PE_parse_boot_argn("itlwm_publish_now", &immediate, sizeof(immediate))) {
-        IOLog("%s::publishing now (itlwm_publish_now)\n", getName());
+        ITLWM_LOG("%s::publishing now (itlwm_publish_now)\n", getName());
         return false;
     }
     publishCall = SequoiaThreadCall::allocate(publishAction, this);
@@ -305,9 +310,9 @@ bool IOPCIEDeviceWrapper::startDeferredPublish()
     }
     unsigned delayMs = 0;
     if (publishDelayMillis(delayMs))
-        IOLog("%s::deferring publish by %u ms\n", getName(), delayMs);
+        ITLWM_LOG("%s::deferring publish by %u ms\n", getName(), delayMs);
     else
-        IOLog("%s::deferring publish until the boot settles (root volume + 90 s)\n", getName());
+        ITLWM_LOG("%s::deferring publish until the boot settles (root volume + 90 s)\n", getName());
     return true;
 }
 

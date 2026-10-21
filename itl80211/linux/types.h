@@ -110,11 +110,26 @@
 
 #define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 
+// The log is compiled out of a release build. The default is repeated here
+// rather than taken from include/HAL/ItlDiagnostics.h because this file is
+// below that header in the layering.
+#ifndef SEQUOIA_DIAGNOSTICS
+#define SEQUOIA_DIAGNOSTICS 1
+#endif
+#if SEQUOIA_DIAGNOSTICS
 #define XYLog(fmt, x...)\
 do\
 {\
 kprintf("%s: " fmt, "itlwm", ##x);\
 }while(0)
+#else
+// The arguments are not evaluated: a call is dropped whole, so nothing it
+// would have done happens.
+#define XYLog(...)\
+do\
+{\
+}while(0)
+#endif
 
 typedef UInt8  u8;
 typedef UInt16 u16;

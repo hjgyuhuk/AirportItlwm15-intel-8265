@@ -70,7 +70,7 @@ void AirportItlwm::recordWclQuery(uint32_t selector)
         case 524: if (d.wclQueryChannelsInfo != UINT32_MAX) ++d.wclQueryChannelsInfo; break;
         default: return;
     }
-    publishNativeScanDiagnostics();
+    this->publishNativeScanDiagnostics();
 }
 
 // Implemented in SequoiaPeerFactory.cpp: walk the verified 24G830 WCL
@@ -136,7 +136,7 @@ IOReturn AirportItlwm::requestNativeScan(void *data)
     nativeScan.diagnostics.planReason = UINT32_MAX;
     auto finishRequest = [this](IOReturn result) {
         nativeScan.diagnostics.lastRequestResult = static_cast<uint32_t>(result);
-        publishNativeScanDiagnostics();
+        this->publishNativeScanDiagnostics();
         return result;
     };
     if (!nativeRadioAvailable() || !nativeScanCall || !nativeScanTimerAdded || !power_state) {
@@ -280,7 +280,7 @@ IOReturn AirportItlwm::requestNativeScan(void *data)
         nativeScan.diagnostics.rejectStage = RejectBegin;
         return finishRequest(kIOReturnBusy);
     }
-    publishNativeScanDiagnostics();
+    this->publishNativeScanDiagnostics();
     const auto scheduled = nativeScanTimer->setTimeoutMS(10);
     if (scheduled != kIOReturnSuccess) {
         nativeScan.diagnostics.rejectStage = RejectTimer;
@@ -343,7 +343,7 @@ void AirportItlwm::runNativeScan()
         // Publish before entering the synchronous HAL scan. If the transport
         // wedges while waiting for firmware, the provider still records that
         // the worker started and radio enable completed.
-        publishNativeScanDiagnostics();
+        this->publishNativeScanDiagnostics();
         if (enabled == kIOReturnSuccess && nativeRadioAvailable() && power_state && !nativeScan.canceled()) {
             ItlScan::NativeSink sink;
             sink.context = &nativeScan;
@@ -385,13 +385,13 @@ void AirportItlwm::runNativeScan()
             nativeScan.diagnostics.rawTerminalStatus = hal->nativeScanRawStatus;
             memcpy(nativeScan.diagnostics.nativeScanChannelList,
                 hal->nativeScanChannelList, sizeof(nativeScan.diagnostics.nativeScanChannelList));
-            setProperty("SequoiaNativeScanError", static_cast<uint64_t>(error), 32);
-            publishNativeScanDiagnostics();
+            ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativeScanError", static_cast<uint64_t>(error), 32);
+            this->publishNativeScanDiagnostics();
         } else if (enabled == kIOReturnSuccess && !nativeScan.plan.associatedScan()) {
             // Cancellation may have arrived while radio initialization slept.
             hal->nativeDisable(bsdInterface);
         }
-        publishNativeScanDiagnostics();
+        this->publishNativeScanDiagnostics();
     }
     nativeScan.workerFinished();
     _fCommandGate->commandWakeup(&nativeScan, false);
@@ -777,7 +777,7 @@ void AirportItlwm::recordUnsupportedRequest(uint32_t selector, bool notReady)
     }
     // Publish immediately: the dispatcher runs on the workqueue, and a boot that
     // ends early should still leave the last selectors visible in the black box.
-    publishNativeScanDiagnostics();
+    this->publishNativeScanDiagnostics();
 }
 
 void AirportItlwm::recordConfigurationSetter(uint32_t selector)
@@ -785,7 +785,7 @@ void AirportItlwm::recordConfigurationSetter(uint32_t selector)
     auto &d = nativeScan.diagnostics;
     ++d.configurationSetters;
     d.lastConfigurationSetter = selector;
-    publishNativeScanDiagnostics();
+    this->publishNativeScanDiagnostics();
 }
 
 void AirportItlwm::stopNativeScan()

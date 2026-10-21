@@ -7,6 +7,7 @@
 //
 
 #include "AirportItlwmEthernetInterface.hpp"
+#include <HAL/ItlDiagnostics.h>
 
 #include <sys/_if_ether.h>
 #include <net80211/ieee80211_var.h>
@@ -36,8 +37,8 @@ IOReturn AirportItlwmEthernetInterface::recordNativeBSDResult(const char *stage,
     IOService *targets[] = {owner, evidence};
     for (auto *target : targets) {
         if (!target) continue;
-        target->setProperty("ItlwmNativeBSDStage", stage);
-        target->setProperty("ItlwmNativeBSDResult", static_cast<UInt64>(result), 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBSDStage", stage);
+        ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBSDResult", static_cast<UInt64>(result), 32);
     }
     return result;
 }

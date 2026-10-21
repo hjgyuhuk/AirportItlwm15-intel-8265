@@ -42,7 +42,7 @@ bool ItlNetworkUserClient::initWithTask(task_t owningTask, void *securityID, UIn
 
 bool ItlNetworkUserClient::start(IOService *provider)
 {
-//    IOLog("start\n");
+//    ITLWM_LOG("start\n");
     if( !super::start( provider ))
         return false;
     fDriver = OSDynamicCast(itlwm, provider);
@@ -58,7 +58,7 @@ bool ItlNetworkUserClient::start(IOService *provider)
 
 IOReturn ItlNetworkUserClient::clientClose()
 {
-//    IOLog("clientClose\n");
+//    ITLWM_LOG("clientClose\n");
     if( !isInactive())
         terminate();
     return kIOReturnSuccess;
@@ -66,13 +66,13 @@ IOReturn ItlNetworkUserClient::clientClose()
 
 IOReturn ItlNetworkUserClient::clientDied()
 {
-//    IOLog("clientDied\n");
+//    ITLWM_LOG("clientDied\n");
     return super::clientDied();
 }
 
 void ItlNetworkUserClient::stop(IOService *provider)
 {
-//    IOLog("stop\n");
+//    ITLWM_LOG("stop\n");
     super::stop( provider );
 }
 
@@ -80,7 +80,7 @@ IOReturn ItlNetworkUserClient::externalMethod(uint32_t selector, IOExternalMetho
 {
     bool isSet = selector & IOCTL_MASK;
     selector &= ~IOCTL_MASK;
-//    IOLog("externalMethod invoke. selector=0x%X isSet=%d\n", selector, isSet);
+//    ITLWM_LOG("externalMethod invoke. selector=0x%X isSet=%d\n", selector, isSet);
     if (selector < 0 || selector > IOCTL_ID_MAX) {
         return super::externalMethod(selector, arguments, NULL, this, NULL);
     }

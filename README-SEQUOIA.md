@@ -55,15 +55,13 @@ git -C MacKernelSDK apply ../scripts/sequoia/MacKernelSDK-pexpert.patch
 
 源文件清单、SDK 绑定、编译输出、SHA256 和 UUID 写入 `build/Sequoia-0.1.0-beta.1-RELEASE/`。在 24H23 上自动跑 `kmutil libraries`；其他构建主机只编译。
 
-**★ 离线测试（25 个，宿主可跑）：★**
+**★ 离线测试（宿主可跑）：★**
 
 ```sh
-for t in tests/*_test.cpp; do
-  clang++ -std=gnu++14 -I include -I include/HAL -I itl80211/openbsd -I itl80211/linux \
-    -I itl80211 -I itlwm/hal_iwm -I itlwm/hal_iwx -I itlwm/hal_iwn -I AirportItlwm -I tests \
-    "$t" -o /tmp/t && /tmp/t
-done
+bash tools/run-tests.sh
 ```
+
+**★ 25 个通过；另有 33 个依赖 fork 作者本地的头文件（从未进过 git），脚本会列出并跳过。详见 [`tests/README.md`](tests/README.md)。★★**
 
 ## OpenCore 安装
 

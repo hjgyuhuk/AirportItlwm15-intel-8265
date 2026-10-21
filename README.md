@@ -88,14 +88,13 @@ itlwm_native=1 itlwm_bsd_owner=skywalk itlwm_assoc_scan=1
 ## 离线测试
 
 ```sh
-for t in tests/*_test.cpp; do
-  clang++ -std=gnu++14 -I include -I include/HAL -I itl80211/openbsd -I itl80211/linux \
-    -I itl80211 -I itlwm/hal_iwm -I itlwm/hal_iwx -I itlwm/hal_iwn -I AirportItlwm -I tests \
-    "$t" -o /tmp/t && /tmp/t
-done
+bash tools/run-tests.sh
 ```
 
-**★ 25 个测试，在"诊断开"和"诊断关"两种配置下都全绿。★★**
+**★ 25 个测试全绿；另有 33 个依赖 fork 作者本地的头文件（那些文件从未进过 git），脚本会列出并跳过。★★**
+**★ 覆盖范围与每个测试负责什么见 [`tests/README.md`](tests/README.md)。★★**
+
+**★ 这些测试不替代实机验证 —— 硬件相关行为（固件对话、扫描、关联、换钥、睡眠唤醒）只能在真实硬件上确认。★★**
 
 ## 许可与来源
 

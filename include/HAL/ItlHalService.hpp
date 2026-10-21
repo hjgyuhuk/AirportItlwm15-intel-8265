@@ -29,6 +29,8 @@
 
 #include <net80211/ieee80211_var.h>
 
+#include "ItlDiagnostics.h"
+
 class ItlNativeHal;
 
 // Boot-loop diagnosis. The HAL attach path (ItlIwm::attach -> iwm_attach ->
@@ -46,6 +48,7 @@ extern ItlBootProgress gItlwmHalProgress;
 // nothing in IORegistry and the reporter's first tick is two seconds away, so
 // each marker is also printed in place during the start region: the frozen
 // console is then the record of how far the HAL actually got.
+#if SEQUOIA_DIAGNOSTICS
 #define ITLWM_HAL_STAGE(label) do { \
     gItlwmHalProgress.record(label); \
     IOLog("itlwm-native: hal %s\n", (label)); \
@@ -53,6 +56,13 @@ extern ItlBootProgress gItlwmHalProgress;
 #define ITLWM_HAL_RESULT(value) gItlwmHalProgress.recordResult(value)
 #define ITLWM_IWX_DETAIL(key, value) gItlwmHalProgress.iwxRecord(ItlBootProgress::key, (value))
 #define ITLWM_IWX_BUMP(key) gItlwmHalProgress.iwxBump(ItlBootProgress::key)
+#else
+// A release build records no stage markers.
+#define ITLWM_HAL_STAGE(label) do { } while (0)
+#define ITLWM_HAL_RESULT(value) do { } while (0)
+#define ITLWM_IWX_DETAIL(key, value) do { } while (0)
+#define ITLWM_IWX_BUMP(key) do { } while (0)
+#endif
 #else
 #define ITLWM_HAL_STAGE(label) do { } while (0)
 #define ITLWM_HAL_RESULT(value) do { } while (0)

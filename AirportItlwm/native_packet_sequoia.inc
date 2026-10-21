@@ -131,15 +131,15 @@ UInt32 AirportItlwm::nativeReceivePacket(mbuf_t packet)
             priorFailure != d.failureResult || priorStage != d.failureStage) {
             auto *provider = __atomic_load_n(&gItlwmStageProvider, __ATOMIC_RELAXED);
             if (provider) {
-                provider->setProperty("ItlwmNativeRxAttempts", d.attempts, 32);
-                provider->setProperty("ItlwmNativeRxDelivered", d.delivered, 32);
-                provider->setProperty("ItlwmNativeRxFailed", d.failed, 32);
-                provider->setProperty("ItlwmNativeRxStage", d.stage, 32);
-                provider->setProperty("ItlwmNativeRxResult", d.result, 32);
-                provider->setProperty("ItlwmNativeRxFailureStage", d.failureStage, 32);
-                provider->setProperty("ItlwmNativeRxFailureResult", d.failureResult, 32);
-                provider->setProperty("ItlwmNativeRxBuffers", d.buffers, 32);
-                provider->setProperty("ItlwmNativeRxCapacity", d.capacity, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxAttempts", d.attempts, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxDelivered", d.delivered, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxFailed", d.failed, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxStage", d.stage, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxResult", d.result, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxFailureStage", d.failureStage, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxFailureResult", d.failureResult, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxBuffers", d.buffers, 32);
+                ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRxCapacity", d.capacity, 32);
             }
         }
 #else

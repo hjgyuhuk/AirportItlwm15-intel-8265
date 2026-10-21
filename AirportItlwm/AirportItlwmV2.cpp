@@ -7,6 +7,7 @@
 //
 
 #include "AirportItlwmV2.hpp"
+#include <HAL/ItlDiagnostics.h>
 #include <sys/_netstat.h>
 #include <crypto/sha1.h>
 #include <net80211/ieee80211_priv.h>
@@ -140,13 +141,13 @@ SInt32 AirportItlwm::handleCardSpecific(IO80211SkywalkInterface *interface,
     if (accepted) __atomic_add_fetch(&nativeLegacyScanAccepted, 1u, __ATOMIC_RELAXED);
     __atomic_store_n(&nativeLegacyScanLastResult, result, __ATOMIC_RELAXED);
     if (getProvider()) {
-        getProvider()->setProperty("ItlwmNativeLegacyScanRequests",
+        ITLWM_PUBLISH_DIAGNOSTIC(getProvider(), "ItlwmNativeLegacyScanRequests",
                                    __atomic_load_n(&nativeLegacyScanRequests, __ATOMIC_RELAXED), 32);
-        getProvider()->setProperty("ItlwmNativeLegacyScanAccepted",
+        ITLWM_PUBLISH_DIAGNOSTIC(getProvider(), "ItlwmNativeLegacyScanAccepted",
                                    __atomic_load_n(&nativeLegacyScanAccepted, __ATOMIC_RELAXED), 32);
-        getProvider()->setProperty("ItlwmNativeLegacyScanLastCommand",
+        ITLWM_PUBLISH_DIAGNOSTIC(getProvider(), "ItlwmNativeLegacyScanLastCommand",
                                    __atomic_load_n(&nativeLegacyScanLastCommand, __ATOMIC_RELAXED), 32);
-        getProvider()->setProperty("ItlwmNativeLegacyScanLastResult", result, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(getProvider(), "ItlwmNativeLegacyScanLastResult", result, 32);
     }
     return result;
 }
@@ -159,11 +160,11 @@ void AirportItlwm::recordNativeLegacyScanSet(bool multiple, IOReturn result)
         __atomic_add_fetch(&nativeLegacySetScanRequests, 1u, __ATOMIC_RELAXED);
     __atomic_store_n(&nativeLegacySetScanLastResult, static_cast<uint32_t>(result), __ATOMIC_RELAXED);
     if (getProvider()) {
-        getProvider()->setProperty("ItlwmNativeLegacySetScanRequests",
+        ITLWM_PUBLISH_DIAGNOSTIC(getProvider(), "ItlwmNativeLegacySetScanRequests",
                                    __atomic_load_n(&nativeLegacySetScanRequests, __ATOMIC_RELAXED), 32);
-        getProvider()->setProperty("ItlwmNativeLegacySetScanMultipleRequests",
+        ITLWM_PUBLISH_DIAGNOSTIC(getProvider(), "ItlwmNativeLegacySetScanMultipleRequests",
                                    __atomic_load_n(&nativeLegacySetScanMultipleRequests, __ATOMIC_RELAXED), 32);
-        getProvider()->setProperty("ItlwmNativeLegacySetScanLastResult",
+        ITLWM_PUBLISH_DIAGNOSTIC(getProvider(), "ItlwmNativeLegacySetScanLastResult",
                                    __atomic_load_n(&nativeLegacySetScanLastResult, __ATOMIC_RELAXED), 32);
     }
 }
@@ -562,6 +563,7 @@ IOReturn AirportItlwm::setProperties(OSObject *properties)
             parseResult = kIOReturnBadArgument;
             break;
         }
+#if SEQUOIA_DIAGNOSTICS
         if (!strcmp(name, "ItlwmNativeDebugScanRoute")) {
             if (routeSeen || !parseNativeDebugRoute(dictionary->getObject(key), false, update.route)) {
                 parseResult = kIOReturnBadArgument;
@@ -576,7 +578,9 @@ IOReturn AirportItlwm::setProperties(OSObject *properties)
             }
             doneRouteSeen = true;
             update.doneRouteSet = true;
-        } else {
+        } else
+#endif
+        {
             parseResult = kIOReturnUnsupported;
             break;
         }
@@ -597,7 +601,7 @@ IOReturn AirportItlwm::setProperties(OSObject *properties)
             itlwmSetNativeScanDoneRouteOverride(values->doneRoute);
             self->nativeScan.diagnostics.runtimeDoneRoute = values->doneRoute;
         }
-        self->publishNativeScanDiagnostics();
+        ITLWM_PUBLISH_SCAN_DIAGNOSTICS();
         return kIOReturnSuccess;
     };
     if (_fWorkloop->inGate()) return apply(this, &update, nullptr, nullptr, nullptr);
@@ -972,9 +976,9 @@ IOReturn AirportItlwm::setHardwareAddress(const void *addrP, UInt32 addrBytes)
     if (nativeMacRequests != UINT32_MAX) ++nativeMacRequests;
     auto finish = [this](IOReturn result) {
         if (auto *provider = getProvider()) {
-            provider->setProperty("ItlwmNativeMacRequests", nativeMacRequests, 32);
-            provider->setProperty("ItlwmNativeMacChanges", nativeMacChanges, 32);
-            provider->setProperty("ItlwmNativeMacLastResult", static_cast<uint32_t>(result), 32);
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeMacRequests", nativeMacRequests, 32);
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeMacChanges", nativeMacChanges, 32);
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeMacLastResult", static_cast<uint32_t>(result), 32);
         }
         return result;
     };
@@ -1314,7 +1318,7 @@ getPOWER(OSObject *object,
     pd->power_state[3] = power_state;
 #if __IO80211_TARGET >= __MAC_15_0
     if (auto *provider = getProvider())
-        provider->setProperty("ItlwmNativePowerReadState", power_state, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativePowerReadState", power_state, 32);
 #endif
     return kIOReturnSuccess;
 }
@@ -1339,11 +1343,11 @@ setPOWER(OSObject *object,
     const auto requestedPower = pd->power_state[0];
     const auto result = requestedPower ? enableAdapter(bsdInterface) : disableAdapter(bsdInterface);
     if (auto *provider = getProvider()) {
-        provider->setProperty("ItlwmNativePowerRequested", requestedPower, 32);
-        provider->setProperty("ItlwmNativePowerResult", static_cast<uint32_t>(result), 32);
-        provider->setProperty("ItlwmNativePowerPMState", pmPowerState, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativePowerRequested", requestedPower, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativePowerResult", static_cast<uint32_t>(result), 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativePowerPMState", pmPowerState, 32);
         if (fHalService && fHalService->getNativeHal())
-            provider->setProperty("ItlwmNativePowerHalError",
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativePowerHalError",
                 static_cast<uint32_t>(fHalService->getNativeHal()->nativeStateErrorCode()), 32);
     }
     if (result != kIOReturnSuccess) return result;
@@ -1358,14 +1362,14 @@ setPOWER(OSObject *object,
         const auto posted = postMessage(fNetIf, APPLE80211_M_RESET_INTERFACE,
                                         &complete, sizeof(complete), true);
         nativeFirmwareAnnounced = posted == kIOReturnSuccess;
-        setProperty("ItlwmNativeFirmwareReadyPosted", nativeFirmwareAnnounced);
-        setProperty("ItlwmNativeFirmwareReadyPostResult", static_cast<UInt64>(posted), 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(this, "ItlwmNativeFirmwareReadyPosted", nativeFirmwareAnnounced);
+        ITLWM_PUBLISH_DIAGNOSTIC(this, "ItlwmNativeFirmwareReadyPostResult", static_cast<UInt64>(posted), 32);
     }
     return kIOReturnSuccess;
 #else
     if (!pd)
         return kIOReturnError;
-    IOLog("itlwm: setPOWER: num_radios[%d]  power_state(0:%u  1:%u  2:%u  3:%u)\n", pd->num_radios, pd->power_state[0], pd->power_state[1], pd->power_state[2], pd->power_state[3]);
+    ITLWM_LOG("itlwm: setPOWER: num_radios[%d]  power_state(0:%u  1:%u  2:%u  3:%u)\n", pd->num_radios, pd->power_state[0], pd->power_state[1], pd->power_state[2], pd->power_state[3]);
     if (pd->num_radios > 0) {
         bool isRunning = (fHalService->get80211Controller()->ic_ac.ac_if.if_flags & (IFF_UP | IFF_RUNNING)) != 0;
         if (pd->power_state[0] == 0) {
@@ -1432,7 +1436,7 @@ IOReturn AirportItlwm::enableAdapter(IONetworkInterface *netif)
         !hal->nativeDetachedState() && !hal->nativeStateErrorCode() &&
         hal->nativeCommandTransportReady();
     if (auto *provider = getProvider())
-        provider->setProperty("ItlwmNativePowerAlreadyOn", alreadyOn, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativePowerAlreadyOn", alreadyOn, 32);
     if (alreadyOn) return kIOReturnSuccess;
     if (nativeJoin.busy || nativeScan.workerActive()) return kIOReturnBusy;
     if (_fWorkloop->onThread()) return kIOReturnCannotLock;
@@ -1723,7 +1727,7 @@ void AirportItlwm::setPowerStateOff()
     while (nativeRadioTransition && nativeAvailable())
         _fCommandGate->commandSleep(&nativeRadioTransition, THREAD_UNINT);
     const auto result = disableAdapter(bsdInterface);
-    setProperty("SequoiaNativePowerOffError", static_cast<uint64_t>(result), 32);
+    ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOffError", static_cast<uint64_t>(result), 32);
 #else
     disableAdapter(bsdInterface);
 #endif
@@ -1747,7 +1751,7 @@ void AirportItlwm::setPowerStateOn()
     while (nativeRadioTransition && nativeAvailable())
         _fCommandGate->commandSleep(&nativeRadioTransition, THREAD_UNINT);
     IOReturn result = kIOReturnSuccess;
-    setProperty("SequoiaNativePowerOnCleanupRetries", static_cast<uint64_t>(0), 32);
+    ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOnCleanupRetries", static_cast<uint64_t>(0), 32);
     if (power_state && nativeAvailable()) {
         // A drained pre-sleep join can still await its final WCL notification.
         // The join timer retries that notification, but cannot initialize the
@@ -1765,13 +1769,13 @@ void AirportItlwm::setPowerStateOn()
             if (!nativeRadioAvailable() || !power_state) break;
             serviceNativeJoin();
         }
-        setProperty("SequoiaNativePowerOnCleanupRetries", retries, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOnCleanupRetries", retries, 32);
         // Sleeping releases the gate: stop, another PM-off or a user radio-off
         // can supersede wake. Never initialize hardware for a stale request.
         result = nativeRadioAvailable() && power_state ?
             enableAdapter(bsdInterface) : kIOReturnNotReady;
     }
-    setProperty("SequoiaNativePowerOnError", static_cast<uint64_t>(result), 32);
+    ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOnError", static_cast<uint64_t>(result), 32);
 #endif
     pmPolicyMaker->acknowledgeSetPowerState();
 }

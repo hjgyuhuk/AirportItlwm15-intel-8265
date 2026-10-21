@@ -6,6 +6,7 @@
 //  Copyright © 2023 钟先耀. All rights reserved.
 //
 #include "AirportItlwmV2.hpp"
+#include <HAL/ItlDiagnostics.h>
 #include "AirportItlwmSkywalkInterface.hpp"
 #include <sys/CTimeout.hpp>
 #include <libkern/c++/OSMetaClass.h>
@@ -314,11 +315,11 @@ void *AirportItlwmSkywalkInterface::createPeerManager()
     uint32_t role = 0;
     dumpNativeIvars(&peer, &controller, &role, &stream, &pipe);
     if (auto *provider = instance->getProvider()) {
-        provider->setProperty("ItlwmNativePeer", peer, 64);
-        provider->setProperty("ItlwmNativeCtrl", controller, 64);
-        provider->setProperty("ItlwmNativeRole", role, 32);
-        provider->setProperty("ItlwmNativeLogStream", stream, 64);
-        provider->setProperty("ItlwmNativeLogPipe", pipe, 64);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativePeer", peer, 64);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeCtrl", controller, 64);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRole", role, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeLogStream", stream, 64);
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeLogPipe", pipe, 64);
     }
     return itlwmCreatePeerWithDiagnostics(this, instance, instance->getProvider(), instance->getWorkQueue());
 }
@@ -392,7 +393,7 @@ SInt32 AirportItlwmSkywalkInterface::initBSDInterfaceParameters(ifnet_init_epara
              static_cast<unsigned>(read<uint16_t>(blob, 0x144)),
              static_cast<unsigned>(read<uint16_t>(blob, 0x146)),
              read<uint32_t>(blob, 0x148));
-    target->setProperty("ItlwmNativeBsdParamBlob", value);
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdParamBlob", value);
 
     snprintf(value, sizeof(value),
              "tx=%llx/%u rx=%llx/%u h=%llx f14=%08x c0=%u c4=%u r58=%llx re8=%08x bit5=%u "
@@ -409,7 +410,7 @@ SInt32 AirportItlwmSkywalkInterface::initBSDInterfaceParameters(ifnet_init_epara
              read<uint32_t>(clientPtr, 0xe0),
              static_cast<unsigned long long>(read<uint64_t>(clientPtr, 0x100)),
              read<uint32_t>(clientPtr, 0x130));
-    target->setProperty("ItlwmNativeBsdParamPool", value);
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdParamPool", value);
 
     snprintf(value, sizeof(value), "out=%llx len=%u fam=%u idx=%u type=%u nlen=%u alen=%u "
              "slen=%u mac=%012llx",
@@ -421,7 +422,7 @@ SInt32 AirportItlwmSkywalkInterface::initBSDInterfaceParameters(ifnet_init_epara
              static_cast<unsigned>(nlen), static_cast<unsigned>(read<uint8_t>(link, 6)),
              static_cast<unsigned>(read<uint8_t>(link, 7)),
              static_cast<unsigned long long>(mac));
-    target->setProperty("ItlwmNativeBsdParamLink", value);
+    ITLWM_PUBLISH_DIAGNOSTIC(target, "ItlwmNativeBsdParamLink", value);
     return result;
 }
 
@@ -812,7 +813,7 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaBSSInfo(void *data)
     if (d.bssCalls != UINT32_MAX) ++d.bssCalls;
     auto finish = [&](IOReturn result) {
         d.bssResult = static_cast<uint32_t>(result);
-        instance->publishNativeJoinDiagnostics();
+        ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
         return result;
     };
     auto *hal = fHalService ? fHalService->getNativeHal() : nullptr;
@@ -840,7 +841,7 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaExtendedBSSInfo(void *data)
     if (d.extBssCalls != UINT32_MAX) ++d.extBssCalls;
     auto finish = [&](IOReturn result) {
         d.extBssResult = static_cast<uint32_t>(result);
-        instance->publishNativeJoinDiagnostics();
+        ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
         return result;
     };
     auto *hal = fHalService ? fHalService->getNativeHal() : nullptr;
@@ -888,7 +889,7 @@ IOReturn AirportItlwmSkywalkInterface::setSequoiaFastLane(void *data)
     const auto result = flags[0] > 1 || flags[1] > 1 ? kIOReturnBadArgument :
         flags[0] ? kIOReturnUnsupported : kIOReturnSuccess;
     d.fastLaneResult = static_cast<uint32_t>(result);
-    instance->publishNativeJoinDiagnostics();
+    ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
     return result;
 }
 
@@ -902,13 +903,13 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaBGScanCache(void *data)
 
     if (!data) {
         diagnostics.cacheLastResult = static_cast<uint32_t>(kIOReturnBadArgument);
-        instance->publishNativeScanDiagnostics();
+        ITLWM_PUBLISH_SCAN_DIAGNOSTICS();
         return kIOReturnBadArgument;
     }
     if (!instance->getWorkQueue()->inGate() || !instance->nativeRadioAvailable() ||
         !fHalService || !fHalService->get80211Controller()) {
         if (diagnostics.cacheNotReady != UINT32_MAX) ++diagnostics.cacheNotReady;
-        instance->publishNativeScanDiagnostics();
+        ITLWM_PUBLISH_SCAN_DIAGNOSTICS();
         return kIOReturnNotReady;
     }
 
@@ -945,7 +946,7 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaBGScanCache(void *data)
     diagnostics.cacheLastValidEntries = count;
     diagnostics.cacheLastResult = static_cast<uint32_t>(kIOReturnSuccess);
     if (diagnostics.cacheSuccesses != UINT32_MAX) ++diagnostics.cacheSuccesses;
-    instance->publishNativeScanDiagnostics();
+    ITLWM_PUBLISH_SCAN_DIAGNOSTICS();
     return kIOReturnSuccess;
 }
 
@@ -1225,8 +1226,8 @@ getOP_MODE(struct apple80211_opmode_data *od)
         nativeOPModeLastResult = kIOReturnBadArgument;
         if (nativeOPModeCalls != UINT32_MAX) ++nativeOPModeCalls;
         if (instance && instance->getProvider()) {
-            instance->getProvider()->setProperty("ItlwmNativeOPModeCalls", nativeOPModeCalls, 32);
-            instance->getProvider()->setProperty("ItlwmNativeOPModeLastResult",
+            ITLWM_PUBLISH_DIAGNOSTIC(instance->getProvider(), "ItlwmNativeOPModeCalls", nativeOPModeCalls, 32);
+            ITLWM_PUBLISH_DIAGNOSTIC(instance->getProvider(), "ItlwmNativeOPModeLastResult",
                                                  static_cast<UInt64>(nativeOPModeLastResult), 32);
         }
         return nativeOPModeLastResult;
@@ -1237,10 +1238,10 @@ getOP_MODE(struct apple80211_opmode_data *od)
     nativeOPModeLastResult = kIOReturnSuccess;
     if (nativeOPModeCalls != UINT32_MAX) ++nativeOPModeCalls;
     if (instance && instance->getProvider()) {
-        instance->getProvider()->setProperty("ItlwmNativeOPModeCalls", nativeOPModeCalls, 32);
-        instance->getProvider()->setProperty("ItlwmNativeOPModeLastResult",
+        ITLWM_PUBLISH_DIAGNOSTIC(instance->getProvider(), "ItlwmNativeOPModeCalls", nativeOPModeCalls, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(instance->getProvider(), "ItlwmNativeOPModeLastResult",
                                              static_cast<UInt64>(nativeOPModeLastResult), 32);
-        instance->getProvider()->setProperty("ItlwmNativeOPModeLastValue", nativeOPModeLastValue, 32);
+        ITLWM_PUBLISH_DIAGNOSTIC(instance->getProvider(), "ItlwmNativeOPModeLastValue", nativeOPModeLastValue, 32);
     }
     return nativeOPModeLastResult;
 #else

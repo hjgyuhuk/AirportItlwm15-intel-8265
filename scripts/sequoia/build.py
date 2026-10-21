@@ -51,7 +51,7 @@ def sdk_manifest():
     return result
 
 
-def bundle_info(config):
+def bundle_info(config, production=False):
     info = plistlib.loads((REPO / "AirportItlwm/AirportItlwm-Sonoma-Info.plist").read_bytes())
     info.update(CFBundleExecutable=config["executable"], CFBundleIdentifier=config["identifier"],
                 CFBundleName=config["executable"], CFBundlePackageType="KEXT",
@@ -63,6 +63,12 @@ def bundle_info(config):
         personality["CFBundleIdentifier"] = config["identifier"]
     info["IOKitPersonalities"]["NetworkController"]["IOProbeScore"] = 70000
     info["IOKitPersonalities"]["itlwm"]["IOPCIMatch"] = config["pci_match"]
+    if production:
+        # A release build has no probe personalities. The firmware dialogue
+        # personality only attaches when the itlwm-sequoia-firmware boot
+        # argument is present, so it stays inert in a normal boot, but a
+        # release build does not carry it at all.
+        return info
     # Probe build: the diagnostic personality only attaches when the
     # itlwm-sequoia-firmware boot argument is present, so it stays inert in a
     # normal boot. It publishes the firmware dialogue results as properties
@@ -87,7 +93,7 @@ def bundle_info(config):
     return info
 
 
-def verify_bundle(out):
+def verify_bundle(out, production=False):
     config = json.loads((SETTINGS / "release.json").read_text())
     report = json.loads((out / "release-build.json").read_text())
     if report.get("status") != "built-not-boot-validated" or report.get("settings") != config:
@@ -101,7 +107,7 @@ def verify_bundle(out):
         raise ValueError("Unexpected release bundle layout")
     if sha256(binary) != report["executable_sha256"] or sha256(info) != report["info_sha256"]:
         raise ValueError("Release bundle changed")
-    if plistlib.loads(info.read_bytes()) != bundle_info(config):
+    if plistlib.loads(info.read_bytes()) != bundle_info(config, production):
         raise ValueError("Release personality differs")
     magic, cpu, _, kind, count, size, _, _ = struct.unpack("<8I", binary.read_bytes()[:32])
     if (magic, cpu, kind) != (0xFEEDFACF, 0x01000007, 11) or not count or not size:
@@ -112,6 +118,9 @@ def verify_bundle(out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=REPO / "build/Sequoia-0.1.0-beta.1-RELEASE")
+    parser.add_argument("--production", action="store_true",
+                        help="Build without the diagnostics: no properties in the "
+                             "registry, no log output, no probe personalities.")
     args = parser.parse_args()
     out = args.out.resolve()
     if out.is_relative_to(REPO) and not out.is_relative_to(REPO / "build"):
@@ -123,6 +132,8 @@ def main():
     before = source_manifest()
     source_id = hashlib.sha256(json.dumps(before, sort_keys=True).encode()).hexdigest()
     flags = compiler_flags(REPO, "__MAC_15_0", config["release_version"], source_id[:12])
+    if args.production:
+        flags.append("-DSEQUOIA_DIAGNOSTICS=0")
     out.mkdir(parents=True, exist_ok=False)
     objects = out / "objects"
     objects.mkdir()
@@ -141,12 +152,15 @@ def main():
         sources = sources_from_project(REPO)
         sources = [firmware if p.name == "FwBinary.cpp" else p for p in sources]
         # Probe build: the diagnostic personalities are not part of the upstream
-        # release target, so they are compiled in explicitly here.
-        for extra in ("AirportItlwm/SequoiaFirmwareTrial.cpp",
-                      "AirportItlwm/SequoiaNvmTrial.cpp"):
-            trial_source = REPO / extra
-            if trial_source not in sources:
-                sources.append(trial_source)
+        # release target, so they are compiled in explicitly here. A release
+        # build leaves them out.
+        if not args.production:
+            for extra in ("AirportItlwm/SequoiaFirmwareTrial.cpp",
+                          "AirportItlwm/SequoiaNvmTrial.cpp"):
+                trial_source = REPO / extra
+                # A release branch does not carry the probe personalities.
+                if trial_source.exists() and trial_source not in sources:
+                    sources.append(trial_source)
         compiler = subprocess.check_output(["xcrun", "--find", "clang++"], text=True).strip()
         compiled = []
         for index, source in enumerate(sources):
@@ -161,7 +175,7 @@ def main():
         binary = bundle / "Contents/MacOS" / config["executable"]
         binary.parent.mkdir(parents=True)
         info = bundle / "Contents/Info.plist"
-        info.write_bytes(plistlib.dumps(bundle_info(config), sort_keys=False))
+        info.write_bytes(plistlib.dumps(bundle_info(config, args.production), sort_keys=False))
         run(["xcrun", "ld", "-kext", "-arch", "x86_64", "-macos_version_min", "15.0",
              "-o", str(binary), *map(str, compiled), str(module),
              str(REPO / "MacKernelSDK/Library/x86_64/libkmod.a")], "link")
@@ -173,7 +187,8 @@ def main():
             report["library_check_exit_code"] = 0
         if before != source_manifest() or sdk_manifest() != lock["files"]:
             raise ValueError("Build inputs changed during compilation")
-        report.update(status="built-not-boot-validated", executable_sha256=sha256(binary),
+        report.update(status="built-not-boot-validated", production=args.production,
+                      executable_sha256=sha256(binary),
                       info_sha256=sha256(info),
                       uuid=subprocess.check_output(["xcrun", "dwarfdump", "--uuid", str(binary)],
                                                    text=True).split()[1])
@@ -182,7 +197,7 @@ def main():
         raise
     finally:
         (out / "release-build.json").write_text(json.dumps(report, indent=2) + "\n")
-    verify_bundle(out)
+    verify_bundle(out, args.production)
     print(json.dumps({k: report[k] for k in ("status", "compiled", "source_sha256", "uuid",
                      "executable_sha256", "info_sha256", "library_check_exit_code")}, indent=2))
 

@@ -9,17 +9,19 @@ IOReturn AirportItlwm::setNativeDataPath(bool enabled)
     auto finish = [&](IOReturn result) {
 #if defined(IO80211FAMILY_V2) && __IO80211_TARGET >= __MAC_15_0
         if (auto *provider = getProvider()) {
-            provider->setProperty("ItlwmNativeDataPathResult", static_cast<uint32_t>(result), 32);
-            provider->setProperty("ItlwmNativeDataPathEnabled", nativeRegistration.packetQueuesEnabled(), 32);
-            provider->setProperty("ItlwmNativeDataPathBSDFlags", ifnet ? ifnet_flags(ifnet) : 0, 32);
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeDataPathResult", static_cast<uint32_t>(result), 32);
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeDataPathEnabled", nativeRegistration.packetQueuesEnabled(), 32);
+            ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeDataPathBSDFlags", ifnet ? ifnet_flags(ifnet) : 0, 32);
             // r228 A: sample the same queue state again at the data-path boundary.
             // The start-time sample is taken before any BSD stack exists; this one
             // is taken when the path is asked to run, which is when the netif nexus
             // callbacks (nxp_qset_init/nxp_queue_init) would already have run if the
             // Skywalk BSD client owns the interface.
+#if SEQUOIA_DIAGNOSTICS
             bool itlwmPublishQueueState(IOService *target, const char *prefix, void *queue);
             itlwmPublishQueueState(provider, "ItlwmNativeTxQueueLink", nativeRegistration.txQueue());
             itlwmPublishQueueState(provider, "ItlwmNativeRxQueueLink", nativeRegistration.rxQueue());
+#endif
             // The BSD client IOKit matches onto the interface is created
             // asynchronously after registerService, so the start-time sample can
             // legitimately show no children; this later sample is the one that

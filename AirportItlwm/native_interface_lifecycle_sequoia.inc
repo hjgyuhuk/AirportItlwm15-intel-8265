@@ -49,12 +49,14 @@ void AirportItlwmSkywalkInterface::dumpNativeIvars(uint64_t *peer, uint64_t *ctr
     // publish, and on a verbose boot the line is visible while the start runs.
     // Format a bounded snapshot first. panic9 belongs to an internal boot;
     // it is not evidence that this driver's varargs ABI is broken.
+#if SEQUOIA_DIAGNOSTICS
     char line[224];
     snprintf(line, sizeof(line),
              "itlwm-native: ivars skywalk=%p infra=%p peer=%p ctrl=%p role=%u logStream=%p logPipe=%p\n",
              skywalkIvars, infraIvars, reinterpret_cast<void *>(vPeer), reinterpret_cast<void *>(vCtrl),
              vRole, reinterpret_cast<void *>(vStream), reinterpret_cast<void *>(vPipe));
-    IOLog("%s", line);
+    ITLWM_LOG("%s", line);
+#endif
 }
 
 void AirportItlwmSkywalkInterface::stop(IOService *provider)

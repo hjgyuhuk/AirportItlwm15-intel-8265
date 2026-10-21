@@ -519,7 +519,7 @@ void AirportItlwm::publishNativeScanDiagnostics()
 
 ---
 
-## 七、commit 序列（41 个）
+## 七、commit 序列（47 个）
 
 | 阶段 | commit | 内容 |
 |---|---|---|
@@ -560,6 +560,10 @@ void AirportItlwm::publishNativeScanDiagnostics()
 | **发布版** | `a65d1a6` | 建立 production 分支：编译期开关关掉全部诊断，删掉探针 personality |
 | | `c9172d3` | 保留 driver-available 信封（它是功能，不是诊断） |
 | | `ac8a72c` | ★ **开关移进函数内部**（之前包住调用点 → 把调用一起吞了）；加"只经宏可达=违规"检查 |
+| **收尾** | `3040ed9` | 把发布版并回主树（一棵源码，两种构建；探针 personality 恢复） |
+| | `820e721` | 探针 personality 回到树里（它们是量诊断的工具） |
+| | `78b344b` | 删掉与本移植无关的遗留文档：upstream README、fork 发布说明、issue 模板 |
+| | `50337c3` | 文档与脚本进树，树自包含；脚本不再写死绝对路径 |
 
 ---
 

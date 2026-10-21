@@ -463,7 +463,7 @@ sysctl -n kern.version                     # 与 kext 内核里读到的 `versio
 
 **含义**：NVM 层只需一张段 id 偏移表（已实现为 `itlwm/hal_iwm/nvm_sequoia.inc` 的 `iwm_nvm_answered_section()`）。**难度评估要大幅下调** —— **station ABI 也是现成的**（固件 36 完整接受固件 17 的对话格式 + PHY DB 回放），剩下的只有 **native 扫描是否要改走 UMAC** 这一个问题。
 
-**★ 完整逐轮记录、能力位实测值、41 个 commit 的作用、关键知识清单 → [`sequoia-8265-port.md`](sequoia-8265-port.md)。★★★**
+**★ 完整逐轮记录、能力位实测值、47 个 commit 的作用、关键知识清单 → [`sequoia-8265-port.md`](sequoia-8265-port.md)。★★★**
 
 ---
 
@@ -564,7 +564,7 @@ kmutil showloaded | grep SequoiaNative
 fork 自带的两个诊断 personality 被编进 kext，构成 4 级探针阶梯（`nvm` → `firmware` → `main`），每轮给出确定结论。
 **★ 关键里程碑：第 3 级（主路径）在 8265 上完整启动成功（`ItlwmNativeStage = "17_complete"`），系统出现 Wi-Fi 硬件端口。★★**
 
-逐轮数据、能力位实测值、41 个 commit 的作用、关键知识清单见 **[`sequoia-8265-port.md`](sequoia-8265-port.md)**。
+逐轮数据、能力位实测值、47 个 commit 的作用、关键知识清单见 **[`sequoia-8265-port.md`](sequoia-8265-port.md)**。
 
 ### 9.6 尚未验证的部分
 
@@ -596,7 +596,7 @@ fork 自带的两个诊断 personality 被编进 kext，构成 4 级探针阶梯
 
 用 fork 自带的两个诊断 personality 做阶梯实验，把 8265 的实际行为逐层测出来。
 
-**完整记录见 [`sequoia-8265-port.md`](sequoia-8265-port.md)**（含逐轮数据、能力位实测值、41 个 commit 的作用、关键知识清单）。此处只列结论。
+**完整记录见 [`sequoia-8265-port.md`](sequoia-8265-port.md)**（含逐轮数据、能力位实测值、47 个 commit 的作用、关键知识清单）。此处只列结论。
 
 | 级别 | 结论 |
 |---|---|

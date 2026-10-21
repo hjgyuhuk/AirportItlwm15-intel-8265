@@ -166,7 +166,7 @@ ItlwmNativeEvents = 542
 ```
 Hardware Port: Wi-Fi
 Device: en2
-Ethernet Address: xx:xx:xx:xx:xx:xx     ← 8265 的 MAC
+Ethernet Address: （网卡的 MAC，已隐去）
 en2: UP, RUNNING, MULTICAST
 ```
 
@@ -576,7 +576,7 @@ void AirportItlwm::publishNativeScanDiagnostics()
 | **开发版** | `python3 scripts/sequoia/build.py` | 带全部诊断（几百个属性、NVRAM 面包屑、阶段标记、日志）和三个探针 personality |
 | **发布版** | `python3 scripts/sequoia/build.py --production` | 无任何诊断代码；探针 personality 不进 bundle |
 
-**★ 早先两者是两个目录（`work/itlwm-sequoia-8265/` 与 `work/itlwm-sequoia-8265-production/`），现已合并为一棵树：分开会让两份源码漂移，而发布版的问题恰恰出在两份源码的差异上（见 §七·九·二、§七·九·三）。★★**
+**★ 早先两者是两个目录（开发树与发布树），现已合并为一棵树：分开会让两份源码漂移，而发布版的问题恰恰出在两份源码的差异上（见 §七·九·二、§七·九·三）。★★**
 
 | 开关打开时 | 开关关闭时 |
 |---|---|

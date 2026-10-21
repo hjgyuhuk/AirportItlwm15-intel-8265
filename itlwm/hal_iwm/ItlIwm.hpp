@@ -313,12 +313,20 @@ public:
     int iwm_wait_status(const int *, int, void *, unsigned, const int * = nullptr);
     bool commandTransportReady = false;
     bool nativeNet80211Attached = false;
-    // Whether a scan leaves the radio running. The default follows the
-    // request family; the boot argument overrides it.
+    // Whether a scan leaves the radio running. It only ever applies to a
+    // request whose end the driver recognises, so the request family
+    // decides; the boot argument overrides that for testing.
     bool nativeScanKeepRadioEnabled = true;
     // Scratch for the notification the layer above understands. The AX HAL
-    // keeps the same one for the same reason.
-    uint8_t nativeScanNotifScratch[16 + 8 * 40] = {};
+    // keeps the same one for the same reason. The shape the layer expects has
+    // a twelve byte header and eight bytes per channel, and the layer asks
+    // for at most IwmPassiveTrial::MaxChannels channels.
+    static constexpr size_t ScanNotificationHeader = 12;
+    static constexpr size_t ScanNotificationChannel = 8;
+    static_assert(SequoiaWCL::ScanPlan::MaxChannels == ItlScan::IwmPassiveTrial::MaxChannels,
+        "The conversion and the layer have to agree on the channel bound");
+    uint8_t nativeScanNotifScratch[ScanNotificationHeader +
+        ScanNotificationChannel * SequoiaWCL::ScanPlan::MaxChannels] = {};
     // The notification the firmware actually sent, before it was converted.
     uint32_t nativeScanRawTerminal = 0, nativeScanRawIteration = 0, nativeScanRawStatus = 0;
     bool nativeHardwareStarted = false;
@@ -355,6 +363,9 @@ public:
     int iwm_native_scan(const SequoiaWCL::ScanPlan &, const ItlScan::NativeSink &);
     void iwm_native_scan_cancel();
     bool iwm_native_scan_rx(uint16_t, const void *, size_t);
+    // Turns a notification of this firmware family into the shape the layer
+    // above understands. Returns zero when the notification cannot be used.
+    uint16_t iwm_native_scan_normalize(uint16_t, const void *, size_t, const void **, size_t *);
     size_t iwm_native_umac_scan_size(size_t) const;
     int iwm_native_umac_scan_request(const SequoiaWCL::ScanPlan &, const uint16_t *, size_t,
                                       size_t, void *, size_t);

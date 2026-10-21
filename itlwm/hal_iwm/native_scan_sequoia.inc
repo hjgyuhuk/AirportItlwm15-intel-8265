@@ -1,6 +1,3 @@
-// Whether a scan leaves the radio running. A firmware family that answers
-// the request in a form carrying a scan id does not need the radio reset the
-// other one needs, because its notification stream stays in sync.
 int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::NativeSink &sink)
 {
     auto *sc = &com;
@@ -55,6 +52,9 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     wire.txAnt = iwm_fw_valid_tx_ant(sc);
     wire.rxAnt = iwm_fw_valid_rx_ant(sc);
     // Probe build: record what was asked for and where the request gave up.
+    nativeScanRawTerminal = 0;
+    nativeScanRawIteration = 0;
+    nativeScanRawStatus = 0;
     nativeScanFailStage = 0;
     nativeScanFailChannel = 0;
     nativeScanChannelCount = 0;
@@ -146,11 +146,13 @@ int ItlIwm::iwm_native_scan(const SequoiaWCL::ScanPlan &plan, const ItlScan::Nat
     // associated bgscan leaves the device and the connection running: no
     // reset, and IFF_RUNNING stays set so the data path continues afterwards.
     //
-    // The UMAC request does not need it: it carries a scan id and its
-    // notifications carry the same one, so the stream stays in sync.  Stopping
-    // the radio there would cost the join a full restart of the firmware, and
-    // the interface would look down in between, which is what made turning
-    // the radio on slow and left the menu bar showing no radio.
+    // The UMAC request does not need the reset. Its end is a notification the
+    // driver recognises, so the stream is known to be in sync when the scan
+    // returns; the reset existed to resynchronize a stream whose end could
+    // not be recognised. Resetting there would cost the join a full restart
+    // of the firmware, and the interface would look down in between, which
+    // is what made turning the radio on slow and left the menu bar showing
+    // no radio.
     const bool keepRadio = umac && nativeScanKeepRadioEnabled;
     nativeScanKeepRadio = keepRadio ? 1 : 0;
     if (!associated && !nativeDetached && !keepRadio) {
@@ -173,43 +175,62 @@ void ItlIwm::iwm_native_scan_cancel()
     getMainCommandGate()->commandWakeup(&nativeScanDone, false);
 }
 
+// The layer above understands one shape of scan notification. The AX HAL
+// turns its own family's notifications into that shape, and so does this one:
+// the UMAC completion becomes the LMAC-shaped offload completion and the
+// UMAC iteration becomes the LMAC-shaped iteration. The two families lay
+// their notifications out the same way, so the conversion is a copy.
+uint16_t ItlIwm::iwm_native_scan_normalize(uint16_t code, const void *payload, size_t size,
+                                            const void **body, size_t *bodySize)
+{
+    *body = payload;
+    *bodySize = size;
+    if (code == IWM_SCAN_COMPLETE_UMAC) {
+        if (size < sizeof(struct iwm_umac_scan_complete)) return 0;
+        const auto *bytes = static_cast<const uint8_t *>(payload);
+        // The status is where the LMAC-shaped completion keeps it.
+        const uint8_t status = bytes[offsetof(struct iwm_umac_scan_complete, status)];
+        memset(nativeScanNotifScratch, 0, ScanNotificationHeader);
+        nativeScanNotifScratch[2] = status;
+        nativeScanRawTerminal = code;
+        nativeScanRawStatus = status;
+        *body = nativeScanNotifScratch;
+        *bodySize = ScanNotificationHeader;
+        return IWM_SCAN_OFFLOAD_COMPLETE;
+    }
+    if (code == IWM_SCAN_ITERATION_COMPLETE_UMAC) {
+        const size_t header = offsetof(struct iwm_umac_scan_iter_complete_notif, results);
+        const size_t channel = sizeof(struct iwm_scan_results_notif);
+        if (size < header) return 0;
+        const auto *bytes = static_cast<const uint8_t *>(payload);
+        const size_t count = bytes[offsetof(struct iwm_umac_scan_iter_complete_notif, scanned_channels)];
+        if (count > SequoiaWCL::ScanPlan::MaxChannels) return 0;
+        // The firmware's count is not to be trusted: both the notification it
+        // sent and the buffer the conversion writes into have to hold it.
+        if (size < header + count * channel) return 0;
+        if (ScanNotificationHeader + count * channel > sizeof(nativeScanNotifScratch)) return 0;
+        memset(nativeScanNotifScratch, 0, ScanNotificationHeader + count * channel);
+        nativeScanNotifScratch[0] = static_cast<uint8_t>(count);
+        nativeScanNotifScratch[1] = bytes[offsetof(struct iwm_umac_scan_iter_complete_notif, status)];
+        memcpy(nativeScanNotifScratch + ScanNotificationHeader, bytes + header, count * channel);
+        nativeScanRawIteration = code;
+        *body = nativeScanNotifScratch;
+        *bodySize = ScanNotificationHeader + count * channel;
+        return IWM_SCAN_ITERATION_COMPLETE;
+    }
+    return code;
+}
+
 bool ItlIwm::iwm_native_scan_rx(uint16_t code, const void *payload, size_t size)
 {
     if (!nativeScanSink.valid()) return false;
     if (code != IWM_REPLY_RX_PHY_CMD && code != IWM_REPLY_RX_MPDU_CMD &&
         code != IWM_SCAN_ITERATION_COMPLETE && code != IWM_SCAN_OFFLOAD_COMPLETE &&
         code != IWM_SCAN_ITERATION_COMPLETE_UMAC && code != IWM_SCAN_COMPLETE_UMAC) return false;
-    // The layer above understands one shape of scan notification. The AX HAL
-    // turns its own family's notifications into that shape, and so does this
-    // one: the UMAC completion becomes the LMAC-shaped offload completion and
-    // the UMAC iteration becomes the LMAC-shaped iteration. The two families
-    // lay their notifications out the same way, so the conversion is a copy.
-    uint16_t normalized = code;
     const void *body = payload;
     size_t bodySize = size;
-    if (code == IWM_SCAN_COMPLETE_UMAC) {
-        if (size < 12) return false;
-        memset(nativeScanNotifScratch, 0, 12);
-        nativeScanNotifScratch[2] = static_cast<const uint8_t *>(payload)[6];
-        nativeScanRawTerminal = code;
-        nativeScanRawStatus = nativeScanNotifScratch[2];
-        normalized = IWM_SCAN_OFFLOAD_COMPLETE;
-        body = nativeScanNotifScratch;
-        bodySize = 12;
-    } else if (code == IWM_SCAN_ITERATION_COMPLETE_UMAC) {
-        if (size < 16) return false;
-        const auto *bytes = static_cast<const uint8_t *>(payload);
-        const size_t count = bytes[4];
-        if (count > 40 || 12 + count * 8 > sizeof(nativeScanNotifScratch)) return false;
-        memset(nativeScanNotifScratch, 0, 12 + count * 8);
-        nativeScanNotifScratch[0] = static_cast<uint8_t>(count);
-        nativeScanNotifScratch[1] = bytes[5];
-        memcpy(nativeScanNotifScratch + 12, bytes + 16, count * 8);
-        nativeScanRawIteration = code;
-        normalized = IWM_SCAN_ITERATION_COMPLETE;
-        body = nativeScanNotifScratch;
-        bodySize = 12 + count * 8;
-    }
+    const uint16_t normalized = iwm_native_scan_normalize(code, payload, size, &body, &bodySize);
+    if (!normalized) return false;
     nativeScanSink.notification(nativeScanSink.context, normalized, body, bodySize);
     iwm_native_scan_cache_rx(normalized, body, bodySize);
     ItlScan::ScanNotification notification;

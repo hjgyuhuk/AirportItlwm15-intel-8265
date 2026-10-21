@@ -7,6 +7,7 @@ constexpr int IWM_NUM_PAPD_CH_GROUPS = 9;
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 #include <functional>
 
@@ -198,7 +199,10 @@ public:
     uint32_t nativeScanKeepRadio = 0;
     bool nativeScanKeepRadioEnabled = true;
     uint32_t lastCommandId = 0;
-    uint8_t nativeScanNotifScratch[16 + 8 * 40] = {};
+    static constexpr size_t ScanNotificationHeader = 12;
+    static constexpr size_t ScanNotificationChannel = 8;
+    uint8_t nativeScanNotifScratch[ScanNotificationHeader +
+        ScanNotificationChannel * SequoiaWCL::ScanPlan::MaxChannels] = {};
     uint32_t nativeScanRawTerminal = 0, nativeScanRawIteration = 0, nativeScanRawStatus = 0;
     uint16_t nativeScanChannelList[64] = {};
     bool nativeScanPassthrough = false;
@@ -218,6 +222,8 @@ public:
     int iwm_is_valid_channel(unsigned channel) { return channel && channel <= 196 && channel != 144; }
     uint8_t iwm_fw_valid_tx_ant(iwm_softc *) { return 3; }
     uint8_t iwm_fw_valid_rx_ant(iwm_softc *) { return 3; }
+    // Defined out of line by the include below.
+    uint16_t iwm_native_scan_normalize(uint16_t, const void *, size_t, const void **, size_t *);
     size_t iwm_native_umac_scan_size(size_t capacity) { return capacity ? 1684 : 0; }
     int iwm_native_umac_scan_request(const SequoiaWCL::ScanPlan &, const uint16_t *, size_t,
                                       size_t, void *, size_t) { return 0; }
@@ -404,20 +410,21 @@ static void umacNotificationTests()
         sink.stopped = [](void *p) { static_cast<NativeScan *>(p)->hardwareStopped(); };
         driver.nativeScanSink = sink;
         scan.submitted(ItlScan::Submission::Accepted);
-        uint8_t iteration[16 + 8 * 2] = {};
+        // The notification carries a channel count and that many results.
+        uint8_t iteration[16 + 8 * 4] = {};
         iteration[4] = 2;                       // the channels the firmware scanned
         iteration[5] = 1;                       // its status
         iteration[16] = 1; iteration[17] = 1;   // channel 1, 2.4 GHz
         iteration[24] = 36; iteration[25] = 0; // channel 36, 5 GHz
         uint8_t complete[16] = {};
         complete[6] = 1;                        // its status
-        if (fault == 0) iteration[4] = 41;      // more channels than the buffer holds
+        if (fault == 0) iteration[4] = 53;      // more channels than the plan can hold
         if (fault == 1) iteration[4] = 3;       // more channels than were asked for
         if (fault == 2) complete[6] = 9;        // a status the layer does not know
         const bool iterationOk = driver.iwm_native_scan_rx(0xb5, iteration, sizeof(iteration));
         const bool completeOk = driver.iwm_native_scan_rx(0x0f, complete, sizeof(complete));
         if (fault == 0) {
-            // A count that does not fit the buffer is refused outright.
+            // A count that does not fit the plan is refused outright.
             assert(!iterationOk);
             continue;
         }
@@ -441,6 +448,59 @@ static void umacNotificationTests()
         } else {
             assert(completion.outcome == ItlScan::Outcome::Success);
         }
+    }
+}
+
+// The radio reports every channel it scanned. The 8000 family's regulatory
+// inventory has 46 of them, so the conversion has to carry that many, and a
+// notification that claims more channels than it carries must be refused
+// rather than read past its end.
+static void umacChannelCountTests()
+{
+    struct Captured {
+        uint16_t code = 0;
+        uint8_t bytes[512] = {};
+        size_t size = 0;
+        bool valid = false;
+    };
+    for (unsigned fault = 0; fault < 3; ++fault) {
+        ItlIwm driver;
+        Captured captured;
+        ItlScan::NativeSink sink;
+        sink.context = &captured;
+        sink.submitted = [](void *, ItlScan::Submission) {};
+        sink.notification = [](void *p, uint16_t c, const void *b, size_t s) {
+            auto *cap = static_cast<Captured *>(p);
+            cap->code = c;
+            cap->size = s < sizeof(cap->bytes) ? s : sizeof(cap->bytes);
+            memcpy(cap->bytes, b, cap->size);
+            cap->valid = true;
+        };
+        sink.failed = [](void *, ItlScan::Outcome) {};
+        sink.stopped = [](void *) {};
+        driver.nativeScanSink = sink;
+        const size_t count = fault == 2 ? 4 : 46;      // what the notification claims
+        const size_t carried = fault == 1 ? 4 : count; // what it actually carries
+        std::vector<uint8_t> iteration(16 + 8 * carried);
+        iteration[4] = static_cast<uint8_t>(count);
+        iteration[5] = 1;
+        for (size_t i = 0; i < carried; ++i) {
+            iteration[16 + 8 * i] = 1;                  // the channel number
+            iteration[16 + 8 * i + 1] = i < 14 ? 1 : 0; // its band
+        }
+        const bool ok = driver.iwm_native_scan_rx(0xb5, iteration.data(), iteration.size());
+        if (fault == 1) {
+            // The notification claims more channels than it carries.
+            assert(!ok);
+            assert(!captured.valid);
+            continue;
+        }
+        assert(ok);
+        assert(captured.valid && captured.code == 0xe7);
+        assert(captured.size == 12 + 8 * count);
+        assert(captured.bytes[0] == count);
+        assert(captured.bytes[1] == 1);
+        assert(captured.bytes[12] == 1 && captured.bytes[13] == 1);
     }
 }
 
@@ -581,6 +641,7 @@ int main()
     transportTests();
     umacRequestTests();
     umacNotificationTests();
+    umacChannelCountTests();
     associatedTests();
     puts("Native WCL scan: 1,000 session traces, 13 production HAL worker/regulatory scenarios and associated bgscan admission passed");
 }

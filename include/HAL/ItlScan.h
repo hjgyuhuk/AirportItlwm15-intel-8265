@@ -109,8 +109,10 @@ public:
     {
         if (!matches(token) || current_.drained) return false;
         current_.drained = true;
-        current_.terminalSeen = true;
-        if (!current_.outcomeKnown) finish(Outcome::TransportError);
+        // A scan that was asked to stop keeps that reason; one that simply
+        // never reported its end is a transport failure.
+        if (!current_.outcomeKnown)
+            finish(current_.stopRequested ? current_.stopReason : Outcome::TransportError);
         retireIfDone();
         return true;
     }

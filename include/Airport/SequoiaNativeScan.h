@@ -447,22 +447,6 @@ public:
         if (counter != UINT32_MAX) ++counter;
     }
 
-    // The coverage tracker's evidence, for the diagnostics.
-    const ItlScan::IwmPassiveTrial::Evidence &coverageEvidence() const { return coverage_.evidence; }
-
-    // What the coverage tracker saw belongs with the scan that produced it,
-    // not with the layer that copies the diagnostics afterwards.
-    void refreshCoverageDiagnostics()
-    {
-        const auto &evidence = coverage_.evidence;
-        diagnostics.coverageRequested = evidence.requested;
-        diagnostics.coverageIterations = evidence.iterations;
-        diagnostics.coverageScanned = evidence.scanned;
-        diagnostics.coverageTerminalStatus = evidence.terminalStatus;
-        diagnostics.coverageIterationStatus = evidence.iterationStatus;
-        diagnostics.coverageMalformed = evidence.malformed;
-    }
-
     void workerFinished()
     {
         if (!submitted_) submitted(ItlScan::Submission::NotSent);
@@ -539,6 +523,19 @@ private:
         }
         if (diagnostics.assocBeaconsQueued < 8) { reason = 3; return false; }
         return true;
+    }
+
+    // What the coverage tracker saw belongs with the scan that produced it,
+    // not with the layer that copies the diagnostics afterwards.
+    void refreshCoverageDiagnostics()
+    {
+        const auto &evidence = coverage_.evidence;
+        diagnostics.coverageRequested = evidence.requested;
+        diagnostics.coverageIterations = evidence.iterations;
+        diagnostics.coverageScanned = evidence.scanned;
+        diagnostics.coverageTerminalStatus = evidence.terminalStatus;
+        diagnostics.coverageIterationStatus = evidence.iterationStatus;
+        diagnostics.coverageMalformed = evidence.malformed;
     }
 
     ItlScan::IwmPassiveTrial coverage_;

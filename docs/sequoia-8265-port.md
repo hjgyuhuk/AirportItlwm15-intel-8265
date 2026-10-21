@@ -717,10 +717,22 @@ if (!nativeRadioAvailable() || !watchdogTimer || !_fCommandGate ||
 **★ ⇒ 修法（`balanceNativeLinkDown()`）：**WCL 那边"还连着"的状态用一个**跨 join 持久**的标志 `nativeLinkUpOutstanding` 记住**（每轮 join 的 `reset()` 会清掉 per-join 状态，所以这个事实必须住在它外面）；唤醒后 radio 起来时，若该标志仍为真且驱动当前未关联，就补发 link-down。★★**
 **★ ★★ **不改动通用 join 状态机** —— fork 自己的测试（`sequoia_scan_controller_test` 的 scenario 15）明确断言"`publishNativeLink` 失败 → 不发 link-down"，改通用路径会破坏它。★★★**
 
+**★ ★★★ 修复后实测（诊断版 `7642D092`）：重启 → 合盖 → 开盖 → **自动重连成功**。★★**
+**★ 诊断数据证实了机制：★★**
+```
+SequoiaNativePowerOnLinkBalance   = 1     ← 唤醒时补发了 link-down（这正是之前缺的那一环）
+SequoiaNativePowerOnError          = 0     ← radio 重启成功
+SequoiaNativePowerOffError         = 0     ← 睡眠时拆卸成功
+ItlwmNativeEnableRefused           （不存在）← 守卫没挡
+ItlwmNativeAssocWithheld           = 0     ← 修复前那次是 14（关联扫描被扣住的特征消失）
+```
+**★ ⇒ 结论：失败时 WCL 那边"还连着"的状态确实没被清掉，补发 link-down 之后 WCL 就会重新连接。★★★**
+
 **★ ★★★ 另一次复现（诊断版）三次睡眠/唤醒**全部自动重连成功**（每次约 10 秒），说明该路径**大多数时候是通的**，失败是**竞态**。★★**
 **★ ⇒ 兜底的意义：把"偶尔不重连"变成"一定重连"。★★★**
 
 **★ 未解：那次失败的确切触发条件**（是否与"睡眠时正在连接"有关）**尚未确证** —— 现有诊断量不足以区分，需要更多次带诊断的复现。★★**
+**★ ★★ 但兜底已经把它从"Wi-Fi 不可用"降级成"一次多余的 link-down 消息" —— 无论触发条件是什么，唤醒后 WCL 都会知道该重连。★★★**
 
 ## 八、状态与后续
 

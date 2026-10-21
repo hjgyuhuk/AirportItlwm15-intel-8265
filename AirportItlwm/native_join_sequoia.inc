@@ -501,6 +501,8 @@ void AirportItlwm::stopNativeJoin()
 // and WCL still believes the link is up.
 IOReturn AirportItlwm::balanceNativeLinkDown()
 {
+    // 0 = nothing to do, 1 = the link-down was posted, 2 = the post failed.
+    nativeJoin.diagnostics.linkBalance = 0;
     if (!nativeLinkUpOutstanding) return kIOReturnSuccess;
     auto *ic = fHalService ? fHalService->get80211Controller() : nullptr;
     if (ic && ic->ic_state == IEEE80211_S_RUN && ic->ic_bss) return kIOReturnSuccess;
@@ -511,8 +513,10 @@ IOReturn AirportItlwm::balanceNativeLinkDown()
     // synchronous flag.
     void *payload = &link;
     if (postMessage(fNetIf, SequoiaWCL::kLinkStatusMessage,
-            payload, sizeof(link), true) != kIOReturnSuccess)
+            payload, sizeof(link), true) != kIOReturnSuccess) {
+        nativeJoin.diagnostics.linkBalance = 2;
         return kIOReturnError;
+    }
     nativeJoin.diagnostics.linkPostResult = 0;
     nativeLinkUpOutstanding = false;
     nativeJoin.linkDownPosted = true;

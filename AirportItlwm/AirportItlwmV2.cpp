@@ -1797,9 +1797,9 @@ void AirportItlwm::setPowerStateOn()
             // The radio is back, but WCL may still believe the link from
             // before the sleep is up. Tell it that the link is gone, or it
             // keeps the association it thinks it has and asks for no new one.
-            const auto balanced = balanceNativeLinkDown();
+            balanceNativeLinkDown();
             ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOnLinkBalance",
-                balanced == kIOReturnSuccess ? 1 : 0, 32);
+                nativeJoin.diagnostics.linkBalance, 32);
         }
     }
     ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativePowerOnError", static_cast<uint64_t>(result), 32);

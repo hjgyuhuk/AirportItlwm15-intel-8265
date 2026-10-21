@@ -673,6 +673,7 @@ announceNativeDriverAvailable(0);          // 无条件调用 ✓
 | `itlwm_kernel_check=off` | 不查版本 | ★ 跨代，布局几乎肯定不同 |
 
 **★ 生效级别发布为 `ItlwmNativeKernelMatchLevel`（0/1/2/3），一眼能确认自己在哪一级。★★**
+**★ ★★ 日常推荐 `major`（跨小版本也不失效）；更在意布局风险就退回 `minor`；完全不放宽则每次系统更新都要重新编译。★★★**
 **★ 未知值**退回最严的一级**（不是最松的）—— 写错参数不会意外放宽。★★★**
 **★ 无论哪一级，设备白名单与 `itlwm_native=1` 都照查。★★★**
 

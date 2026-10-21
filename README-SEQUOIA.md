@@ -70,11 +70,12 @@ bash tools/run-tests.sh
 1. 把 kext 复制到 `EFI/OC/Kexts/AirportItlwmSequoiaNative.kext`
 2. 在 `Kernel/Add` 添加唯一启用条目：`BundlePath` 为该名称，`ExecutablePath` 为 `Contents/MacOS/AirportItlwmSequoiaNative`，`PlistPath` 为 `Contents/Info.plist`，`Arch` 为 `x86_64`
 3. 停用其它 itlwm / AirportItlwm，以及旧兼容路径用的 `IO80211FamilyLegacy` / 替换的 `IOSkywalkFamily`
-4. **★ 添加启动参数（三个都要）：★★**
+4. **★ 添加启动参数（四个都要）：★★**
    ```
-   itlwm_native=1 itlwm_bsd_owner=skywalk itlwm_assoc_scan=1
+   itlwm_native=1 itlwm_bsd_owner=skywalk itlwm_assoc_scan=1 itlwm_kernel_check=major
    ```
    **★ `itlwm_assoc_scan=1` 不能省：不加它，已连接时系统的扫描请求会被驱动拒掉，Wi-Fi 列表会只剩服务信道上的网络。★★★**
+   **★ `itlwm_kernel_check=major` 让驱动接受任何 Darwin 24.x 的内核，macOS 更新后 Wi-Fi 不会静默失效；代价是跨小版本后私有布局可能已变（见下面「内核版本检查」），出现异常时去掉它即可回到严格模式。★★★**
 5. 用匹配 OpenCore 版本的 `ocvalidate` 检查配置，然后手动重启
 
 不要在系统运行中 load/unload。内置启动失败就从备用 USB 启动，恢复备份。
@@ -106,6 +107,8 @@ Darwin Kernel Version 24.6.0: Sun Aug 23 20:30:56 PDT 2026; root:xnu-11417.140.6
 | `itlwm_kernel_check=minor` | 同一 Darwin 小版本（24.6）的任何 build | ★ 安全更新只换 build、不动私有布局 —— **更新后还能用的正解** ★ |
 | `itlwm_kernel_check=major` | 任何 Darwin 24.x | 跨小版本，布局可能已变 |
 | `itlwm_kernel_check=off` | 不查版本 | ★ 跨代，布局几乎肯定不同 |
+
+**★ 怎么选：日常用 `major`（跨小版本也不失效）；更在意布局风险、只求跨安全更新就用 `minor`；完全不放宽就什么都不加，代价是每次系统更新都要重新编译。★★**
 
 **★ 生效的级别发布成 `ItlwmNativeKernelMatchLevel`（0/1/2/3）。无论哪一级，设备白名单与 `itlwm_native=1` 都照查。★★**
 

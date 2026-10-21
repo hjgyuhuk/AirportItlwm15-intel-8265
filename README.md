@@ -53,13 +53,16 @@ bash tools/install-probe-kext.sh main
 bash tools/collect-probe-diagnostics.sh
 ```
 
-**★ 必需的启动参数**（三个都不能少）：
+**★ 必需的启动参数**（四个都不能少）：
 
 ```
-itlwm_native=1 itlwm_bsd_owner=skywalk itlwm_assoc_scan=1
+itlwm_native=1 itlwm_bsd_owner=skywalk itlwm_assoc_scan=1 itlwm_kernel_check=major
 ```
 
 **★ `itlwm_assoc_scan=1` 容易被忽略：不加它，已连接时系统的扫描请求会被驱动拒掉，Wi-Fi 列表会只剩服务信道上的网络（表现为"找不到某个热点"）。★★**
+
+**★ `itlwm_kernel_check=major` 让驱动接受任何 Darwin 24.x 的内核，而不只是写这份代码时的那一个 build —— 这样 macOS 的安全更新和小版本升级都不会让 Wi-Fi 静默失效。★★**
+**★ 代价是跨小版本后私有 IO80211Family 的布局**可能**已变，而驱动是按固定偏移读它的（见下面「内核版本检查」）。若更新后出现异常，把这个参数去掉即可回到严格模式。★★★**
 
 ## 内核版本检查
 
@@ -81,7 +84,8 @@ itlwm_native=1 itlwm_bsd_owner=skywalk itlwm_assoc_scan=1
 **★ 生效的级别会发布成 `ItlwmNativeKernelMatchLevel`（0=严格 1=minor 2=major 3=off），用 `tools/collect-probe-diagnostics.sh` 就能确认自己在哪一级。★★**
 **★ 无论哪一级，设备白名单和 `itlwm_native=1` 都照查。★★★**
 
-**★ 建议：安全更新之后，先试 `itlwm_kernel_check=minor`；出问题就退回默认的严格级别重新编译。★★**
+**★ 怎么选：日常用 `major`（跨小版本也不失效）；如果你更在意布局风险、只求跨安全更新，就用 `minor`；完全不放宽就什么都不加，代价是每次系统更新都要重新编译。★★**
+**★ 无论选哪一级，驱动都会把生效的级别发布成 `ItlwmNativeKernelMatchLevel`（0/1/2/3），用 `tools/collect-probe-diagnostics.sh` 就能确认。★★★**
 
 ## 两种构建
 

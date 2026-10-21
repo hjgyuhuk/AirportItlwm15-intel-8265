@@ -129,6 +129,10 @@ def main():
     lock = json.loads((SETTINGS / "sdk.lock.json").read_text())
     if sdk_manifest() != lock["files"]:
         raise ValueError("SDK differs from sdk.lock.json; follow README-SEQUOIA.md")
+    if args.production:
+        # A release build must not turn off anything but the diagnostics.
+        subprocess.run([sys.executable, str(SETTINGS / "check-diagnostics.py")],
+                       cwd=REPO, check=True)
     before = source_manifest()
     source_id = hashlib.sha256(json.dumps(before, sort_keys=True).encode()).hexdigest()
     flags = compiler_flags(REPO, "__MAC_15_0", config["release_version"], source_id[:12])

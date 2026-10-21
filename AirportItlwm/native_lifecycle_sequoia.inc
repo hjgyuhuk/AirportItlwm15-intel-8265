@@ -927,9 +927,11 @@ void AirportItlwm::nativeBsdProbeAction(OSObject *owner, IOTimerEventSource *tim
 #endif
 }
 
+// This is not a diagnostic. WCL waits for the driver-available envelope
+// before it starts a scan or an association; a driver that never posts it can
+// still be listed but never joins.
 void AirportItlwm::announceNativeDriverAvailable(uint32_t phase)
 {
-#if SEQUOIA_DIAGNOSTICS
     // WCL expects the complete driver-available envelope: the packed
     // apple80211 payload followed by the 0x40-byte bulletin prefix used by
     // Sequoia's other WCL messages. The interface copies the bytes while this
@@ -949,6 +951,7 @@ void AirportItlwm::announceNativeDriverAvailable(uint32_t phase)
             ++nativeDriverAvailableAnnouncements;
         nativeDriverAvailableLastPhase = phase;
     }
+#if SEQUOIA_DIAGNOSTICS
     IOService *provider = __atomic_load_n(&gItlwmStageProvider, __ATOMIC_RELAXED);
     if (provider) {
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeDriverAvailableAnnouncements",
@@ -958,8 +961,6 @@ void AirportItlwm::announceNativeDriverAvailable(uint32_t phase)
     }
     ITLWM_LOG("itlwm-native: announced driver availability phase=%u count=%u (%zu bytes)\n",
           phase, nativeDriverAvailableAnnouncements, sizeof(announcement));
-#else
-
 #endif
 }
 

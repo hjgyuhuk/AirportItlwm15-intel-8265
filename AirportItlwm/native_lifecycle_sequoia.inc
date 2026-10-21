@@ -574,6 +574,7 @@ void AirportItlwm::publishNativeJoinDiagnostics()
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeJoinCompletionPostResult", d.completionPostResult, 32);
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeJoinLinkUpPosted", d.linkUpPosted, 32);
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeJoinLinkDownPosted", d.linkDownPosted, 32);
+    ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeJoinLinkBalance", d.linkBalance, 32);
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeJoinLinkPostResult", d.linkPostResult, 32);
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeJoinLinkCalls", d.linkCalls, 32);
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeJoinLinkResult", d.linkResult, 32);

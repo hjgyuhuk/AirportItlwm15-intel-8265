@@ -392,6 +392,7 @@ void AirportItlwm::serviceNativeJoin()
             if (!post(SequoiaWCL::kLinkStatusMessage, &link, sizeof(link))) return;
             nativeJoin.linkDownPosted = true;
             nativeJoin.diagnostics.linkDownPosted = 1;
+            nativeLinkUpOutstanding = false;
         }
         if (nativeJoin.abort) {
             if (post(SequoiaWCL::kJoinAbortCompleteMessage, nullptr, 0)) nativeJoin.reset();
@@ -426,6 +427,8 @@ void AirportItlwm::serviceNativeJoin()
         if (!post(SequoiaWCL::kLinkStatusMessage, &link, sizeof(link))) return;
         nativeJoin.linkUpPosted = true;
         nativeJoin.diagnostics.linkUpPosted = 1;
+        nativeLinkUpOutstanding = true;
+        memcpy(nativeLinkUpBssid, nativeJoin.completion.candidates[0].bssid, 6);
     }
     if (!nativeJoin.completionPosted) {
         if (!post(SequoiaWCL::kConnectionCompleteMessage, &nativeJoin.completion, sizeof(nativeJoin.completion))) return;
@@ -488,4 +491,32 @@ void AirportItlwm::stopNativeJoin()
     }
     OSSafeReleaseNULL(nativeJoinTimer);
     nativeJoin.request.clear();
+}
+
+
+// The wake path needs WCL to know that the old association is gone. A sleep
+// tears the hardware down, and when the teardown cannot post the link-down,
+// WCL keeps the association it thinks it has and never asks for a new one.
+// Post it here, after the radio is back, while the driver is not associated
+// and WCL still believes the link is up.
+IOReturn AirportItlwm::balanceNativeLinkDown()
+{
+    if (!nativeLinkUpOutstanding) return kIOReturnSuccess;
+    auto *ic = fHalService ? fHalService->get80211Controller() : nullptr;
+    if (ic && ic->ic_state == IEEE80211_S_RUN && ic->ic_bss) return kIOReturnSuccess;
+    SequoiaWCL::LinkStatusEvent link = {};
+    memcpy(link.bssid, nativeLinkUpBssid, 6);
+    link.reason = 0xff;
+    // The same post the join path uses: the last bool is isSendToWcl, not a
+    // synchronous flag.
+    void *payload = &link;
+    if (postMessage(fNetIf, SequoiaWCL::kLinkStatusMessage,
+            payload, sizeof(link), true) != kIOReturnSuccess)
+        return kIOReturnError;
+    nativeJoin.diagnostics.linkPostResult = 0;
+    nativeLinkUpOutstanding = false;
+    nativeJoin.linkDownPosted = true;
+    nativeJoin.diagnostics.linkDownPosted = 1;
+    nativeJoin.diagnostics.linkBalance = 1;
+    return kIOReturnSuccess;
 }

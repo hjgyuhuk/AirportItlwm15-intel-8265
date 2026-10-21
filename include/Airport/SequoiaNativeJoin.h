@@ -62,6 +62,9 @@ struct NativeJoin {
         uint32_t extBssCalls = 0, extBssResult = UINT32_MAX;
         uint32_t fastLaneCalls = 0, fastLaneResult = UINT32_MAX, fastLaneFlags = 0;
         uint32_t linkRequested = 0, connected = 0, drained = 0;
+    // Set when the wake path had to tell WCL that the link is gone, because
+    // the teardown that sleep caused could not post it.
+    uint32_t linkBalance = 0;
         uint32_t rejectStage = UINT32_MAX;
         // Last leave and retained failure contain only stages/results, never
         // peer identity. reset() intentionally preserves these diagnostics.

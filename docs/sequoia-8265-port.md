@@ -682,6 +682,46 @@ announceNativeDriverAvailable(0);          // 无条件调用 ✓
 **★ 是 fork 原本的测试断言抓住的（`assert(!allowed(1, 24, 5, ...))`）—— 它还在，我要是把它覆盖掉就没人知道了。★★**
 **★ ⇒ 改这类门禁时，**保留原有的断言**并在其上加新的，比重写整个测试文件安全。★★★**
 
+### 七·九·五、睡眠/唤醒：唤醒后 Wi-Fi 失效
+
+**★ 现象：合盖休眠后唤醒，Wi-Fi 不可用；**连"关/开无线电"都救不回来**（radio on 走 `setPOWER` → `enableAdapter`，而 `enableAdapter` 的守卫挡住 → 什么也没发生）。★★**
+
+**★ 现场事实（第一次复现，20:09:57 唤醒后）：驱动对象还在、固件不再响应；PCI 设备本身已回到 D0（`CurrentPowerState=1`）→ 不是硬件没上电。★★**
+
+**★ 代码路径：★★**
+```
+睡眠: setPowerStateOff → disableAdapter → ItlIwm::disable → iwm_stop()   ← 固件停机
+唤醒: setPowerStateOn → enableAdapter(bsdInterface)                         ← 只调一次，失败无重试
+```
+
+**★ ★★★ 查出来的**两个**问题：★★★**
+
+**★ ① `enableAdapter` 的守卫会静默拒绝（`AirportItlwmV2.cpp:1427-1429`）★★**
+```cpp
+if (!nativeRadioAvailable() || !watchdogTimer || !_fCommandGate ||
+    (nativeSkywalkBSDOwner ? (!fNetIf || !fNetIf->getBSDInterface()) : !netif) ||
+    !fHalService || !fHalService->getNativeHal()) return kIOReturnNotReady;
+```
+**★ ★★ 其中 **`!fNetIf->getBSDInterface()`** 最可疑：**启动 radio（固件 init）根本不需要 BSD ifnet**（那是数据面的东西），但睡眠中 Skywalk 可能 detach 接口 → 这条守卫就永久挡住唤醒。★★**
+**★ ⇒ 已给每条守卫编号并发布（`ItlwmNativeEnableRefused`），一次复现就能读出是哪一条。★★★**
+
+**★ ② WCL 不知道链路断了（`native_join_sequoia.inc`）★★**
+**★ 驱动在睡眠时把 join 拆掉（cancel → leave），**但没有可靠地通知 WCL**。★★**
+**★ 对照两条 leave 路径：★★**
+- WCL 主动 leave（`requestNativeLeave`）：拆完后 **178 行显式 `publishNativeLink(false, 0)`** → WCL 知道链路断了 ✓
+- 睡眠 cancel（`disableAdapter` 的 drain 分支）：拆完后**什么都不发** ✗
+
+**★ ★★★ ⇒ WCL 以为链路还 up → 唤醒后不重新发起 join → Wi-Fi 卡死。★★★**
+**★ ★★ 佐证：一次成功的会话里 `JoinLeaveRequests = 3`（3 轮睡眠各 leave 一次）、`JoinRequests = 7`（唤醒后 WCL 确实重连了）。★★★**
+
+**★ ⇒ 修法（`balanceNativeLinkDown()`）：**WCL 那边"还连着"的状态用一个**跨 join 持久**的标志 `nativeLinkUpOutstanding` 记住**（每轮 join 的 `reset()` 会清掉 per-join 状态，所以这个事实必须住在它外面）；唤醒后 radio 起来时，若该标志仍为真且驱动当前未关联，就补发 link-down。★★**
+**★ ★★ **不改动通用 join 状态机** —— fork 自己的测试（`sequoia_scan_controller_test` 的 scenario 15）明确断言"`publishNativeLink` 失败 → 不发 link-down"，改通用路径会破坏它。★★★**
+
+**★ ★★★ 另一次复现（诊断版）三次睡眠/唤醒**全部自动重连成功**（每次约 10 秒），说明该路径**大多数时候是通的**，失败是**竞态**。★★**
+**★ ⇒ 兜底的意义：把"偶尔不重连"变成"一定重连"。★★★**
+
+**★ 未解：那次失败的确切触发条件**（是否与"睡眠时正在连接"有关）**尚未确证** —— 现有诊断量不足以区分，需要更多次带诊断的复现。★★**
+
 ## 八、状态与后续
 
 **已证实**

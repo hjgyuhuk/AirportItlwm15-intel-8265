@@ -405,6 +405,9 @@ public:
     IOTimerEventSource *nativeScanTimer = nullptr;
     bool nativeScanTimerAdded = false, nativeLoopRetained = true, ready = true, pmOn = true;
     bool nativeRadioTransition = false;
+    // The wake path needs to know that WCL still believes the link is up.
+    bool nativeLinkUpOutstanding = false;
+    uint8_t nativeLinkUpBssid[6] = {};
     bool nativeFirmwareAnnounced = false;
     unsigned firmwareAnnouncements = 0;
     uint32_t nativeMacRequests = 0, nativeMacChanges = 0;

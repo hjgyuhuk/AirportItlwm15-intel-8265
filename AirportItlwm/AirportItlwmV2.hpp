@@ -343,6 +343,13 @@ public:
     // experiments available for comparison in the same source build.
     bool nativeWclCompatR162 = false;
     bool nativeRadioTransition = false; // Serialized on the main workqueue.
+    // True while WCL still believes the link is up.  The per-join state is
+    // cleared by every join reset, so the fact that WCL owes a link-down has
+    // to live outside it: a sleep tears the hardware down, and WCL has to be
+    // told, or it keeps the association it thinks it has and never asks for
+    // a new one.
+    bool nativeLinkUpOutstanding = false;
+    uint8_t nativeLinkUpBssid[6] = {};
     bool nativeFirmwareAnnounced = false; // First successful radio enable, under gate.
     uint32_t nativeMacRequests = 0, nativeMacChanges = 0;
     void drainNativeRadioTransition();
@@ -365,6 +372,7 @@ public:
     IOLock *nativePMLock = nullptr;
     bool initNativeScan();
     IOReturn publishNativeLink(bool, UInt);
+    IOReturn balanceNativeLinkDown();
     IOReturn setNativeDataPath(bool);
     void stopNativeScan();
     IOReturn requestNativeScan(void *);

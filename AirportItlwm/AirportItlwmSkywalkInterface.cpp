@@ -813,7 +813,7 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaBSSInfo(void *data)
     if (d.bssCalls != UINT32_MAX) ++d.bssCalls;
     auto finish = [&](IOReturn result) {
         d.bssResult = static_cast<uint32_t>(result);
-        ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+        instance->publishNativeScanDiagnostics();
         return result;
     };
     auto *hal = fHalService ? fHalService->getNativeHal() : nullptr;
@@ -841,7 +841,7 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaExtendedBSSInfo(void *data)
     if (d.extBssCalls != UINT32_MAX) ++d.extBssCalls;
     auto finish = [&](IOReturn result) {
         d.extBssResult = static_cast<uint32_t>(result);
-        ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+        instance->publishNativeScanDiagnostics();
         return result;
     };
     auto *hal = fHalService ? fHalService->getNativeHal() : nullptr;
@@ -889,7 +889,7 @@ IOReturn AirportItlwmSkywalkInterface::setSequoiaFastLane(void *data)
     const auto result = flags[0] > 1 || flags[1] > 1 ? kIOReturnBadArgument :
         flags[0] ? kIOReturnUnsupported : kIOReturnSuccess;
     d.fastLaneResult = static_cast<uint32_t>(result);
-    ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+    instance->publishNativeScanDiagnostics();
     return result;
 }
 
@@ -903,13 +903,13 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaBGScanCache(void *data)
 
     if (!data) {
         diagnostics.cacheLastResult = static_cast<uint32_t>(kIOReturnBadArgument);
-        ITLWM_PUBLISH_SCAN_DIAGNOSTICS();
+        instance->publishNativeJoinDiagnostics();
         return kIOReturnBadArgument;
     }
     if (!instance->getWorkQueue()->inGate() || !instance->nativeRadioAvailable() ||
         !fHalService || !fHalService->get80211Controller()) {
         if (diagnostics.cacheNotReady != UINT32_MAX) ++diagnostics.cacheNotReady;
-        ITLWM_PUBLISH_SCAN_DIAGNOSTICS();
+        instance->publishNativeJoinDiagnostics();
         return kIOReturnNotReady;
     }
 
@@ -946,7 +946,7 @@ IOReturn AirportItlwmSkywalkInterface::getSequoiaBGScanCache(void *data)
     diagnostics.cacheLastValidEntries = count;
     diagnostics.cacheLastResult = static_cast<uint32_t>(kIOReturnSuccess);
     if (diagnostics.cacheSuccesses != UINT32_MAX) ++diagnostics.cacheSuccesses;
-    ITLWM_PUBLISH_SCAN_DIAGNOSTICS();
+    instance->publishNativeJoinDiagnostics();
     return kIOReturnSuccess;
 }
 

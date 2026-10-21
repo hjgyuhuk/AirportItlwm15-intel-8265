@@ -601,7 +601,7 @@ IOReturn AirportItlwm::setProperties(OSObject *properties)
             itlwmSetNativeScanDoneRouteOverride(values->doneRoute);
             self->nativeScan.diagnostics.runtimeDoneRoute = values->doneRoute;
         }
-        ITLWM_PUBLISH_SCAN_DIAGNOSTICS();
+        self->publishNativeScanDiagnostics();
         return kIOReturnSuccess;
     };
     if (_fWorkloop->inGate()) return apply(this, &update, nullptr, nullptr, nullptr);

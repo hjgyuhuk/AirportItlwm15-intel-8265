@@ -1175,7 +1175,7 @@ bool AirportItlwm::startNative(IOService *provider)
             return static_cast<AirportItlwm *>(owner)->nativeTransmitPackets(queue, packets, count);
         }, nullptr, registerNativeInfraEthernet);
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRegistrationResult", static_cast<UInt64>(registrationResult), 32);
-    ITLWM_PUBLISH_REGISTRATION_DIAGNOSTICS("ethernet-registered");
+    publishNativeRegistrationDiagnostics("ethernet-registered");
     if (registrationResult != kIOReturnSuccess) goto fail;
     ITLWM_NATIVE_STAGE(165, "16a_registration_prepared");
     // registerEthernetInterface() has now populated both Skywalk registration
@@ -1307,7 +1307,7 @@ bool AirportItlwm::startNative(IOService *provider)
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRunningStateApplied", nativeRunningStateApplied);
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRunningStateResult",
                           static_cast<UInt64>(nativeRunningStateResult), 32);
-    ITLWM_PUBLISH_REGISTRATION_DIAGNOSTICS("interface-started");
+    this->publishNativeScanDiagnostics();
     // Active, not merely valid. ControlCenter reports this interface as
     // "Wi-Fi status is active (inactive, UI state: 10) with no connected network" and
     // oscillates between UI state 90 (animating) and 10 (inactive) - it never reaches
@@ -1545,7 +1545,7 @@ bool AirportItlwm::startNative(IOService *provider)
     // requires the whole message to be 0xf8 bytes, the 0xB8-byte structure plus the
     // 0x40-byte prefix these WCL messages carry. The struct is left in the header's
     // own layout so the family's offsets line up without any packing.
-    ITLWM_ANNOUNCE_DRIVER_AVAILABLE(0);
+    this->publishNativeJoinDiagnostics();
     // The child callback above checks admission, and stop closes admission
     // before synchronous BSD detach joins callbacks. The child has already
     // published itself from attachToDataLinkLayer; the parent notification
@@ -1553,7 +1553,7 @@ bool AirportItlwm::startNative(IOService *provider)
     if (!bsdInterface || !bsdInterface->getIfnet())
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeBSDStage",
                               nativeSkywalkBSDOwner ? "bsd-owner-skywalk" : "bsd-attach-pending");
-    ITLWM_PUBLISH_REGISTRATION_DIAGNOSTICS("bsd-registered");
+    captureNativeJoinDiagnostics();
     ITLWM_NATIVE_STAGE(165, "16a_bsd_registered");
     registerService();
     ITLWM_NATIVE_STAGE(170, "17_complete");
@@ -1586,7 +1586,7 @@ bool AirportItlwm::startNative(IOService *provider)
     // across that registration boundary; the provider counters make this
     // ordering observable after the boot.
     if (!nativeWclCompatR162)
-        ITLWM_ANNOUNCE_DRIVER_AVAILABLE(1);
+        announceNativeDriverAvailable(1);
     itlwmPublishBootProgress(this);
     ITLWM_LOG("itlwm-native: startup complete events=%u hal=%s\n",
           gItlwmHalProgress.count(), gItlwmHalProgress.current());

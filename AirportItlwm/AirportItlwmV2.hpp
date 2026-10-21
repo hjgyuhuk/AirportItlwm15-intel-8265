@@ -307,22 +307,6 @@ public:
     // without relying on IOLog surviving a reset.
     void announceNativeDriverAvailable(uint32_t phase);
 
-    // The diagnostics are compiled out of a release build. These macros drop
-    // the calls whole, so a release build neither publishes the properties
-    // nor does the work behind them.
-#if SEQUOIA_DIAGNOSTICS
-#define ITLWM_ANNOUNCE_DRIVER_AVAILABLE(phase) announceNativeDriverAvailable(phase)
-#define ITLWM_PUBLISH_REGISTRATION_DIAGNOSTICS(phase) publishNativeRegistrationDiagnostics(phase)
-#define ITLWM_PUBLISH_SCAN_DIAGNOSTICS() publishNativeScanDiagnostics()
-#define ITLWM_PUBLISH_JOIN_DIAGNOSTICS() publishNativeJoinDiagnostics()
-#define ITLWM_CAPTURE_JOIN_DIAGNOSTICS(reset) captureNativeJoinDiagnostics(reset)
-#else
-#define ITLWM_ANNOUNCE_DRIVER_AVAILABLE(phase) do { } while (0)
-#define ITLWM_PUBLISH_REGISTRATION_DIAGNOSTICS(phase) do { } while (0)
-#define ITLWM_PUBLISH_SCAN_DIAGNOSTICS() do { } while (0)
-#define ITLWM_PUBLISH_JOIN_DIAGNOSTICS() do { } while (0)
-#define ITLWM_CAPTURE_JOIN_DIAGNOSTICS(reset) do { } while (0)
-#endif
     // Read-only registration boundary snapshot.  This records the objects
     // Apple uses to hand an interface from Skywalk to IO80211/CoreWLAN; it
     // never invokes an unverified private registration entry point.

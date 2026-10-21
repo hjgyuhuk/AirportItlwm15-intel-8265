@@ -19,7 +19,7 @@ IOReturn AirportItlwm::requestNativeJoin(void *data)
     nativeJoin.diagnostics.candidate = {};
     auto finish = [this](IOReturn result) {
         nativeJoin.diagnostics.lastRequestResult = static_cast<uint32_t>(result);
-        ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+        this->publishNativeJoinDiagnostics();
         return result;
     };
     if (!nativeRadioAvailable() || !power_state || !nativeJoinCall || !nativeJoinTimerAdded) {
@@ -142,7 +142,7 @@ IOReturn AirportItlwm::requestNativeLeave(void *data)
             d.leaveLastFailureStage = stage;
             d.leaveLastFailureRequest = d.leaveRequests;
         }
-        ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+        this->publishNativeJoinDiagnostics();
         return result;
     };
     if (_fWorkloop->onThread()) return finish(kIOReturnCannotLock, 1);
@@ -210,7 +210,7 @@ IOReturn AirportItlwm::requestNativeLink(void *data)
     if (d.linkCalls != UINT32_MAX) ++d.linkCalls;
     auto finish = [&](IOReturn result) {
         d.linkResult = static_cast<uint32_t>(result);
-        ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+        this->publishNativeJoinDiagnostics();
         return result;
     };
     if (!nativeAvailable()) return finish(kIOReturnNotReady);
@@ -259,7 +259,7 @@ void AirportItlwm::runNativeJoin()
 {
     auto *hal = fHalService ? fHalService->getNativeHal() : nullptr;
     if (nativeJoin.diagnostics.workerStarts != UINT32_MAX) ++nativeJoin.diagnostics.workerStarts;
-    ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+    this->publishNativeJoinDiagnostics();
     auto wait = [&]() {
         AbsoluteTime deadline;
         clock_interval_to_deadline(10, kMillisecondScale, &deadline);
@@ -272,7 +272,7 @@ void AirportItlwm::runNativeJoin()
         if (!nativeJoin.error && !nativeJoin.cancel && nativeRadioAvailable() && power_state) {
             nativeJoin.generation = static_cast<int>(hal->nativeGeneration());
             hal->nativeCandidateDiagnostic = {};
-            ITLWM_CAPTURE_JOIN_DIAGNOSTICS(true);
+            this->captureNativeJoinDiagnostics();
             nativeJoin.error = hal->nativeJoinStart(nativeJoin.request, 0);
             nativeJoin.diagnostics.startResult = static_cast<uint32_t>(nativeJoin.error);
             nativeJoin.diagnostics.candidate = hal->nativeCandidateDiagnostic;
@@ -294,8 +294,8 @@ void AirportItlwm::runNativeJoin()
         if (nativeJoin.connected) break;
         const auto now = airport_up_time();
         if (!diagnosticMs || now < diagnosticMs || now - diagnosticMs >= 1000) {
-            ITLWM_CAPTURE_JOIN_DIAGNOSTICS();
-            ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+            this->publishNativeJoinDiagnostics();
+            this->captureNativeJoinDiagnostics(true);
             diagnosticMs = now;
         }
         if (now < nativeJoin.startedMs || now - nativeJoin.startedMs >= 30000) {
@@ -307,7 +307,7 @@ void AirportItlwm::runNativeJoin()
     if (!nativeJoin.connected || !nativeRadioAvailable() || nativeJoin.cancel || nativeJoin.error) {
         nativeJoin.connected = false;
         // Retain the pre-disable supplicant/key/port state even after reset().
-        ITLWM_CAPTURE_JOIN_DIAGNOSTICS();
+        this->captureNativeJoinDiagnostics();
         if (nativeJoin.leaveRequested && !nativeJoin.leaveAttempted && hal) {
             nativeJoin.leaveAttempted = true;
             do {
@@ -335,7 +335,7 @@ void AirportItlwm::runNativeJoin()
         ITLWM_PUBLISH_DIAGNOSTIC(this, "SequoiaNativeJoinError", static_cast<uint64_t>(nativeJoin.error), 32);
     }
     nativeJoin.diagnostics.connected = nativeJoin.connected ? 1 : 0;
-    ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+    this->captureNativeJoinDiagnostics();
     nativeJoin.worker = false;
     _fCommandGate->commandWakeup(&nativeJoin, false);
     if (nativeAvailable() && nativeJoinTimerAdded) {
@@ -438,8 +438,8 @@ void AirportItlwm::serviceNativeJoin()
     if (!nativeJoin.linkRequested || publishNativeLink(true, 0) != kIOReturnSuccess) return;
     nativeJoin.connected = true;
     nativeJoin.diagnostics.connected = 1;
-    ITLWM_CAPTURE_JOIN_DIAGNOSTICS();
-    ITLWM_PUBLISH_JOIN_DIAGNOSTICS();
+    this->publishNativeJoinDiagnostics();
+    this->publishNativeJoinDiagnostics();
     _fCommandGate->commandWakeup(&nativeJoin, false);
 }
 

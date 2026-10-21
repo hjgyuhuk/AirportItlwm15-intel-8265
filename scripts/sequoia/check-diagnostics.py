@@ -18,6 +18,13 @@ REPO = Path(__file__).resolve().parents[2]
 
 # What a gated function may not do. Publishing a property and logging are
 # what the switch is for; anything here changes the driver's behaviour.
+# A function that is functional code must not be reached through a macro the
+# switch compiles out. The driver-available announcement is the one that
+# matters: the wireless control layer waits for it.
+MUST_ALWAYS_RUN = {
+    "announceNativeDriverAvailable": "the wireless control layer waits for it",
+}
+
 FORBIDDEN = {
     "postMessage": "posts a message to the interface",
     "postMessageSync": "posts a message to the interface",
@@ -59,6 +66,19 @@ def main():
                         line = text[:block.start()].count("\n") + 1
                         violations.append(
                             f"{relative}:{line}: a gated block calls {name}() ({why})")
+    # The macros that stand in for a function call must not be the only way
+    # that function is reached.
+    for path in sorted(REPO.rglob("*.hpp")) + sorted(REPO.rglob("*.inc")):
+        relative = path.relative_to(REPO)
+        if relative.parts[0] in {".git", "MacKernelSDK", "build"}:
+            continue
+        text = path.read_text(errors="replace")
+        for name, why in MUST_ALWAYS_RUN.items():
+            macro = re.search(r"^#define\s+(ITLWM_\w+)\([^)]*\)\s+do\s*\{\s*\}\s*while\s*\(0\)",
+                              text, re.M)
+            if macro and name in macro.group(0):
+                violations.append(
+                    f"{relative}: {name}() is behind a macro the switch compiles out ({why})")
     if violations:
         print("A release build would change what the driver does:", file=sys.stderr)
         for violation in violations:

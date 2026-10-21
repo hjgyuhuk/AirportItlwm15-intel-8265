@@ -10,3 +10,8 @@ MacKernelSDK
 # configuration and the fallback kext built for it.
 .local
 *.kext
+# Editor and IDE state.
+.idea
+.vscode
+*.xcuserstate
+xcuserdata

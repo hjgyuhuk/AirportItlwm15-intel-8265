@@ -358,6 +358,16 @@ struct ItlIwm : OSObject {
     void nativeJoinEvent(const ItlJoin::Event &) {}
     bool nativePortReady() const { return portReady; }
     void nativeClearKeys() {}
+    // The diagnostics the Airport layer reads back from the HAL after a scan.
+    uint32_t nativeScanFailStage = 0, nativeScanFailChannel = 0;
+    uint32_t nativeScanChannelCount = 0;
+    uint16_t nativeScanChannelList[64] = {};
+    uint32_t nativeScanWireCount = 0, nativeScanWireCapacity = 0;
+    uint32_t nativeScanTxAnt = 0, nativeScanRxAnt = 0, nativeScanSourceValid = 0;
+    uint32_t nativeScanUsableCount = 0;
+    uint16_t nativeScanUsableList[64] = {};
+    uint32_t nativeScanSubmitReject = 0, nativeScanUmac = 0, nativeScanKeepRadio = 0;
+    uint32_t nativeScanRawTerminal = 0, nativeScanRawIteration = 0, nativeScanRawStatus = 0;
     bool detached = false, transportReady = true;
     bool nativeDetachedState() const { return detached; }
     bool nativeCommandTransportReady() const { return transportReady; }
@@ -374,6 +384,8 @@ public:
     ItlIwm hal; ItlIwm *fHalService = &hal;
     IOTimerEventSource watchdog, *watchdogTimer = &watchdog;
     SequoiaWCL::NativeScan nativeScan;
+    // The delivery timer's delay, which grows while a delivery cannot drain.
+    uint32_t nativeScanBackoffMs = 10;
     SequoiaWCL::NativeJoin nativeJoin;
     SequoiaThreadCall *nativeJoinCall = nullptr;
     IOTimerEventSource *nativeJoinTimer = nullptr;

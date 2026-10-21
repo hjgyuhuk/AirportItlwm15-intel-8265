@@ -327,8 +327,9 @@ public:
         "The conversion and the layer have to agree on the channel bound");
     uint8_t nativeScanNotifScratch[ScanNotificationHeader +
         ScanNotificationChannel * SequoiaWCL::ScanPlan::MaxChannels] = {};
-    // The notification the firmware actually sent, before it was converted.
-    uint32_t nativeScanRawTerminal = 0, nativeScanRawIteration = 0, nativeScanRawStatus = 0;
+    // The notification the firmware actually sent, before it was converted,
+    // is recorded in the interface's own members. Declaring them here would
+    // hide the ones the layer above reads.
     bool nativeHardwareStarted = false;
     bool nativeSystemQueue = false;
     bool nativeDetached = false;
@@ -594,5 +595,30 @@ public:
     struct pci_attach_args pci;
     struct iwm_softc com;
 };
+
+// A member declared in the interface and again here hides the one the layer
+// above reads: the two are different objects, and whoever writes this
+// class's copy leaves the published value at whatever it was. Taking the
+// address through this class picks the one it declares, and the inherited
+// one if it declares none, so the two names have to land on the same object.
+#define ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(member) \
+    static_assert(&ItlIwm::member == &ItlNativeHal::member, \
+        #member " is declared in both the interface and this class")
+
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanUmac);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanKeepRadio);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanRawTerminal);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanRawIteration);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanRawStatus);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanFailStage);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanFailChannel);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanChannelCount);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanWireCount);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanWireCapacity);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanTxAnt);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanRxAnt);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanSourceValid);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanUsableCount);
+ITL_NATIVE_HAL_MEMBER_IS_NOT_SHADOWED(nativeScanSubmitReject);
 
 #endif /* ItlIwm_hpp */

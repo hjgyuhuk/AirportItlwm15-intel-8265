@@ -61,6 +61,13 @@ static void pciMsiXClearAndSet(IOPCIDevice *device, UInt8 msixCap, UInt16 clear,
 
 extern IOWorkLoop *_fWorkloop;
 
+// Which kernel match level the running driver was admitted with:
+// 0 = the exact kernel string, 1 = the same Darwin release, 2 = the same
+// kernel generation. Published so the level in effect is visible.
+static uint32_t gItlwmKernelMatchLevel = 0;
+
+uint32_t itlwmKernelMatchLevel() { return gItlwmKernelMatchLevel; }
+
 IOWorkLoop *IOPCIEDeviceWrapper::getWorkLoop() const
 {
     return _fWorkloop;
@@ -88,9 +95,21 @@ probe(IOService *provider, SInt32 *score)
     for (const char *argument : diagnosticArguments)
         if (PE_parse_boot_argn(argument, &diagnostic, sizeof(diagnostic))) return nullptr;
 #endif
+    // How closely the running kernel has to match the one the driver was
+    // written against. The exact match is the default: the driver reads the
+    // private IO80211Family by fixed offsets, so a layout it was not written
+    // against can make the kernel read a pointer that is not a pointer.
+    // A user who understands that can relax it; the level is published so it
+    // is visible which one is in effect.
+    char kernelCheck[8] = {};
+    const bool hasKernelCheck =
+        PE_parse_boot_arg_str("itlwm_kernel_check", kernelCheck, sizeof(kernelCheck));
+    const auto kernelMatch = SequoiaTrial::kernelMatch(hasKernelCheck ? kernelCheck : nullptr);
+    gItlwmKernelMatchLevel = static_cast<uint32_t>(kernelMatch);
     if (!PE_parse_boot_argn("itlwm_native", &nativeOptIn, sizeof(nativeOptIn)) ||
         !SequoiaTrial::allowed(nativeOptIn, version_major, version_minor, version,
-            device->configRead16(kIOPCIConfigVendorID), device->configRead16(kIOPCIConfigDeviceID)))
+            device->configRead16(kIOPCIConfigVendorID),
+            device->configRead16(kIOPCIConfigDeviceID), kernelMatch))
         return nullptr;
 #endif
     if (ItlIwx::iwx_match(device)) {

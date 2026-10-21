@@ -6,6 +6,8 @@ void AirportItlwm::publishNativeRegistrationDiagnostics(const char *phase)
     IOService *provider = getProvider();
     if (!provider) return;
 
+    extern uint32_t itlwmKernelMatchLevel();
+    ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeKernelMatchLevel", itlwmKernelMatchLevel(), 32);
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRegistrationPhase", phase ? phase : "unknown");
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeRegistrationPrepared", nativeRegistration.prepared());
     ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeInterfaceStarted", nativeInterfaceStarted);

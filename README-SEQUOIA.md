@@ -88,6 +88,27 @@ bash tools/collect-probe-diagnostics.sh                 # 重启后采集全部�
 
 **★ `BUILD_DIR=` 环境变量可切换安装哪个构建（开发版 / 发布版）。★★**
 
+## 内核版本检查
+
+**★ 驱动按固定偏移读 IO80211Family 的私有数据（接口 ivars 的 `+0x8` → `+0x120` → `+0xb08` 链），也调用它的私有方法 —— 别的 build 上符号照样能加载，但布局变了就可能让内核读到不是指针的东西。★★**
+
+**★ 所以默认要求内核串完全相同：★★**
+
+```
+Darwin Kernel Version 24.6.0: Sun Aug 23 20:30:56 PDT 2026; root:xnu-11417.140.69.712.69~1/RELEASE_X86_64
+```
+
+**★ macOS 安全更新会换 build → 驱动静默不加载。可以逐级放宽：★★**
+
+| 启动参数 | 放行范围 | 风险 |
+|---|---|---|
+| 不加（默认） | 完全相同的内核串 | 无 |
+| `itlwm_kernel_check=minor` | 同一 Darwin 小版本（24.6）的任何 build | ★ 安全更新只换 build、不动私有布局 —— **更新后还能用的正解** ★ |
+| `itlwm_kernel_check=major` | 任何 Darwin 24.x | 跨小版本，布局可能已变 |
+| `itlwm_kernel_check=off` | 不查版本 | ★ 跨代，布局几乎肯定不同 |
+
+**★ 生效的级别发布成 `ItlwmNativeKernelMatchLevel`（0/1/2/3）。无论哪一级，设备白名单与 `itlwm_native=1` 都照查。★★**
+
 ## 范围
 
 - 支持：2.4 / 5 GHz、WPA2-Personal / PSK / CCMP；WPA/WPA2 与 WPA2/WPA3 混合 AP 提供 WPA2-PSK/CCMP 时选 WPA2

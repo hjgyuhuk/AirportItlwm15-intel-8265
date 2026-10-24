@@ -4,6 +4,7 @@
 // neighbour list, which is what this mode's health gate prevents.
 // requestNativeScan reads it long before the anonymous-namespace route block
 // further down, so the atomic and accessors live here at file scope.
+#include "SequoiaPeerFactory.hpp"
 static uint32_t gNativeAssocScanOverride = UINT32_MAX;
 
 static uint32_t nativeAssocScanOverride()
@@ -73,11 +74,10 @@ void AirportItlwm::recordWclQuery(uint32_t selector)
     this->publishNativeScanDiagnostics();
 }
 
-// Implemented in SequoiaPeerFactory.cpp: walk the verified 24G830 WCL
-// scan-cache chain (scanManager+0x20 -> +0x68 -> +0x10 -> +0x00) and read the
-// IO80211Queue entry count at *(queue+0x10)+0x08.  Only counters and pointers
-// are returned; no SSID, BSSID or frame contents are retained.
-bool itlwmReadWclCacheQueueCount(void *interface, uint64_t *count, void **cacheStore, void **queue);
+// The 24G830 WCL scan-cache walk and the entry-count read live in
+// SequoiaPeerFactory.cpp (itlwmReadWclCacheQueueCount); the shared header
+// declares them.  Only counters and pointers are returned; no SSID, BSSID or
+// frame contents are retained.
 
 bool AirportItlwm::initNativeScan()
 {
@@ -609,10 +609,10 @@ void itlwmSetNativeScanDoneRouteOverride(uint32_t value) { setNativeScanDoneRout
 void itlwmSetNativeAssocScanOverride(uint32_t value) { setNativeAssocScanOverride(value); }
 void itlwmSetNativeWclQueriesOverride(uint32_t value) { setNativeWclQueriesOverride(value); }
 
-// Implemented in SequoiaPeerFactory.cpp: schedule the glue's pending-event
-// source on Apple's own IO80211WorkQueue after posting a message.
-bool itlwmGlueScheduleEvents(void *interface);
-bool itlwmGlueWakeState(void *interface, void **gate, unsigned *wake);
+// itlwmGlueScheduleEvents / itlwmGlueWakeState are declared in
+// SequoiaPeerFactory.hpp: they schedule the glue's pending-event source on
+// Apple's own IO80211WorkQueue after posting a message, and read the gate's
+// wake byte.
 
 static void publishGlueScheduleDiagnostics(AirportItlwm *self)
 {

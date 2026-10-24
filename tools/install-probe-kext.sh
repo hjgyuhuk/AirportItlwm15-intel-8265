@@ -11,6 +11,10 @@
 #
 # 环境变量:
 #   BUILD_DIR = 要安装的构建目录（默认是开发树的构建，含诊断属性）
+#
+# 启动参数：脚本写入 README-SEQUOIA.md 要求的四个必需参数（itlwm_native=1
+# itlwm_bsd_owner=skywalk itlwm_assoc_scan=1 itlwm_kernel_check=major）加当前
+# 模式的 itlwm-sequoia-* 参数；用户自己加的其它参数一律保留。
 set -euo pipefail
 
 MODE="${1:-nvm}"
@@ -35,6 +39,9 @@ cp -X "$OC/config.plist" "$OC/config.plist.bak"
 echo "==> 安装 kext 到 $OC/Kexts/"
 rm -rf "$OC/Kexts/AirportItlwmSequoiaNative.kext"
 cp -R "$KEXT_SRC" "$OC/Kexts/AirportItlwmSequoiaNative.kext"
+# A FAT ESP stores extended attributes as AppleDouble ._ files; codesign then
+# sees an unsigned subcomponent inside the bundle and verify fails. Strip them.
+find "$OC/Kexts/AirportItlwmSequoiaNative.kext" -name '._*' -delete
 
 echo "==> ad-hoc 签名"
 codesign --force --sign - --timestamp=none "$OC/Kexts/AirportItlwmSequoiaNative.kext"
@@ -79,7 +86,8 @@ g = c['NVRAM']['Add']['7C436110-AB2A-4BBB-A880-FE41995C9F82']
 # arguments belongs to them and is kept: overwriting the whole string would
 # silently drop settings that took a reboot to find out about.
 owned = ('darkwake=', 'ps2kbdonly=', '-wegnoegpu', 'itlwm_native=',
-         'itlwm_bsd_owner=', 'itlwm-sequoia-')
+         'itlwm_bsd_owner=', 'itlwm_assoc_scan=', 'itlwm_kernel_check=',
+         'itlwm-sequoia-')
 kept = [arg for arg in str(g.get('boot-args', '')).split()
         if arg and not arg.startswith(owned)]
 # The diagnostic boot argument switches the main personality off (the
@@ -88,8 +96,13 @@ kept = [arg for arg in str(g.get('boot-args', '')).split()
 extra = {'nvm': ['itlwm-sequoia-nvm=1'],
          'firmware': ['itlwm-sequoia-firmware=1'],
          'main': []}[mode]
+# The four arguments README-SEQUOIA.md marks as required. itlwm_assoc_scan=1
+# keeps the system scan requests accepted while associated, and
+# itlwm_kernel_check=major is the level the README recommends for daily use;
+# a user who wants another level has to change it after running this script.
 base = ['darkwake=0', 'ps2kbdonly=1', '-wegnoegpu', 'itlwm_native=1',
-        'itlwm_bsd_owner=skywalk']
+        'itlwm_bsd_owner=skywalk', 'itlwm_assoc_scan=1',
+        'itlwm_kernel_check=major']
 g['boot-args'] = ' '.join(base + extra + kept)
 
 with open(path, 'wb') as f:

@@ -107,7 +107,7 @@ itlwm_native=1 itlwm_bsd_owner=skywalk itlwm_assoc_scan=1 itlwm_kernel_check=maj
 
 | | |
 |---|---|
-| [**sequoia-8265-port.md**](docs/sequoia-8265-port.md) | **完整移植记录** —— 逐轮实测数据、能力位、47 个 commit 的作用、12 条关键知识、两次发布版故障的复盘 |
+| [**sequoia-8265-port.md**](docs/sequoia-8265-port.md) | **完整移植记录** —— 逐轮实测数据、能力位、55 个 commit 的作用、12 条关键知识、两次发布版故障的复盘 |
 | [issue-1018-analysis.md](docs/issue-1018-analysis.md) | 上游 issue #1009 / #1018 的分析与本项目的结论 |
 | [sequoia-wifi-guide.md](docs/sequoia-wifi-guide.md) | 面向普通用户：能不能用、怎么装、有什么坑 |
 | [code-quality-review.md](docs/code-quality-review.md) | fork 的代码质量评估 |

@@ -8,6 +8,8 @@
 #include <libkern/c++/OSString.h>
 #include <Airport/SequoiaInterfaceLifecycle.h>
 #include <Airport/SequoiaPeerDiagnostics.h>
+#include <Airport/SequoiaWCL.h>
+#include "SequoiaPeerFactory.hpp"
 
 #if __IO80211_TARGET >= __MAC_15_0
 extern "C" OSObject *ccReporter(OSObject *, IOWorkLoop *)
@@ -32,6 +34,158 @@ extern "C" void *io80211GlueWithInterface(void *)
 
 using SequoiaInterfaceLifecycle::read;
 
+// Every fixed offset this file reads on the family's private classes, in one
+// place. Each value was recovered from the 24H23/24G830 IO80211Family (the
+// definition-site comments around the readers explain what each slot holds);
+// when the kernel match is relaxed past the build they were audited against,
+// these are the bytes that can point somewhere else. The resolvers below walk
+// them hop by hop and the one-shot class gate checks the result, so a shifted
+// layout degrades to the queue route instead of dereferencing blindly.
+namespace SequoiaPeerAbi {
+
+// The family's OSMetaClass objects keep their ivars pointer at +0x18. The
+// interface subclasses carry theirs at +0x110; our own AirportItlwm exposes
+// the delivery-chain ivars at the same +0x110, and the family-controller
+// slot (with the fault adapter at +0x58) at +0x120.
+constexpr uint32_t kFamilyIvars        = 0x18;
+constexpr uint32_t kInterfaceIvars     = 0x110;
+constexpr uint32_t kOurControllerIvars = 0x110;
+constexpr uint32_t kOurControllerGate  = 0x10;   // ivars slot postMessage loads first
+constexpr uint32_t kDeliveryObjectSlot = 0xb08;  // gate slot: the family's delivery object
+constexpr uint32_t kFamilyControllerIvars = 0x120;
+constexpr uint32_t kFaultAdapterSlot   = 0x58;
+
+// Storage chain: where the glue's own builders keep what they built.
+constexpr uint32_t kIvarsGlueSlot      = 0xd8;   // interface ivars: IO80211Glue
+constexpr uint32_t kGlueWclGlueSlot    = 0x18;   // glue ivars: WCLGlue
+constexpr uint32_t kGlueWorkQueueSlot  = 0x38;   // glue ivars: fMainWorkQueue
+constexpr uint32_t kGlueEventGateWake  = 0x30;   // byte routeEventToWcl sets on the gate
+constexpr uint32_t kWclGlueBoardSlot   = 0x8;    // WCLGlue ivars: WCLBulletinBoard
+constexpr uint32_t kWclGlueCtrlSlot    = 0x0;    // WCLGlue ivars: WCLController
+constexpr uint32_t kWclCtrlIvars       = 0x10;   // WCLController ivars
+constexpr uint32_t kWclCtrlScanManager = 0x28;   // WCLController ivars: WCLScanManager
+
+// Delivery chain: what IO80211Glue::receiveMessageInternal walks per event.
+constexpr uint32_t kGlueDeliveryA      = 0x8;    // glue ivars: object A
+constexpr uint32_t kDeliveryHopB       = 0x120;  // object A: object B
+constexpr uint32_t kDeliveryWclGlue    = 0xb08;  // object B: the WCLGlue
+
+// WCLBulletinBoard internals.
+constexpr uint32_t kBoardIvars         = 0x10;   // board ivars pointer
+constexpr uint32_t kBoardBlockFlag     = 0xc00;  // isMsgNeeded checks this first
+constexpr uint32_t kBoardScanBitmap    = 0x8d0;  // msgType-2 bitmap, 16 bits per msgId
+
+// WCLScanManager scan-cache internals (the getCachedBeacons walk).
+constexpr uint32_t kScanCacheHop       = 0x20;
+constexpr uint32_t kScanCacheStore     = 0x68;
+constexpr uint32_t kScanCacheQueue     = 0x10;
+constexpr uint32_t kQueueStorage       = 0x10;
+constexpr uint32_t kQueueCount         = 0x08;
+
+// WCLFsmManager handler table (WCLScanManager inherits WCLFsmManager).
+constexpr uint32_t kFsmIvars           = 0x18;
+constexpr uint32_t kFsmTableSlot       = 0x10;
+constexpr uint32_t kFsmCountSlot       = 0x18;
+constexpr uint32_t kFsmEntrySize       = 0x18;   // {msgIndex(4B), fn(8B), offset(8B)}
+
+// WCLBulletinBoard manager ids observed in the 24G830 disassembly.
+constexpr uint32_t kBoardManagerRoute  = 12;     // sendMessage's manager id
+constexpr uint32_t kBoardManagerScan   = 6;      // setMessageEnable's scan-manager id
+
+// Fourth scan-result id in gSCAN_MANAGERCallBackArray; the other three have
+// named constants in SequoiaWCL.h, this one has none.
+constexpr uint32_t kScanResultFanoutMessage = 0xcd;
+
+// The x86_64 kernel map starts here. A hop that reads a non-null value below
+// it is not a pointer, whatever the layout shifted onto that slot.
+constexpr uint64_t kKernelPtrMin = 0xFFFFFF8000000000ULL;
+
+} // namespace SequoiaPeerAbi
+
+namespace {
+
+// The storage chain every board walk shares: interface -> glue -> glue ivars
+// -> WCLGlue -> WCLGlue ivars. Each hop is null-checked in the order the old
+// inline walks used; a non-null value outside the kernel map fails the hop
+// the same way (see the one-shot class gate below for what that protects).
+struct WclStorageChain {
+    void *glue;
+    void *glueIvars;
+    void *wclGlue;
+    void *wclIvars;
+};
+
+// Verdict of the one-shot ABI gate. Ok and WrongClass are cached for the
+// boot; an unresolved chain is re-walked (the glue may simply not be built
+// yet, so an early failure must not disable the direct route for good).
+WclAbiVerdict gWclAbiVerdict = WclAbiVerdict::NotChecked;
+
+bool kernelPointer(const void *value)
+{
+    return !value ||
+        reinterpret_cast<uintptr_t>(value) >= SequoiaPeerAbi::kKernelPtrMin;
+}
+
+// Prefix shared by every walk: the interface's ivars block.
+void *interfaceIvars(void *interface)
+{
+    if (!interface) return nullptr;
+    void *ivars = read<void *>(interface, SequoiaPeerAbi::kInterfaceIvars);
+    return kernelPointer(ivars) ? ivars : nullptr;
+}
+
+// The one-shot class check. The offsets above were audited on one kernel
+// build, and a relaxed match can shift them onto neighbouring slots whose
+// values still look like kernel pointers. metaCast asks the objects
+// themselves what they are, which catches a resolved-but-wrong chain before
+// any message is posted through it. It cannot catch every wild pointer - a
+// kernel-range value of the wrong kind still reaches metaCast - so the
+// strict and minor kernel-match levels remain the real guarantee; this gate
+// is what stands between them and a kernel panic.
+bool wclBoardClassCheck(const WclStorageChain &chain, void *board)
+{
+    if (gWclAbiVerdict == WclAbiVerdict::Ok) return true;
+    if (gWclAbiVerdict == WclAbiVerdict::WrongClass) return false;
+    auto *glueObject = static_cast<OSObject *>(chain.glue);
+    auto *boardObject = static_cast<OSObject *>(board);
+    if (!glueObject->metaCast("IO80211Glue") ||
+        !boardObject->metaCast("WCLBulletinBoard")) {
+        gWclAbiVerdict = WclAbiVerdict::WrongClass;
+        return false;
+    }
+    gWclAbiVerdict = WclAbiVerdict::Ok;
+    return true;
+}
+
+bool resolveWclStorage(void *interface, WclStorageChain &chain)
+{
+    chain = WclStorageChain{};
+    void *ivars = interfaceIvars(interface);
+    if (!ivars) return false;
+    chain.glue = read<void *>(ivars, SequoiaPeerAbi::kIvarsGlueSlot);
+    if (!chain.glue || !kernelPointer(chain.glue)) return false;
+    chain.glueIvars = read<void *>(chain.glue, SequoiaPeerAbi::kFamilyIvars);
+    if (!chain.glueIvars || !kernelPointer(chain.glueIvars)) return false;
+    chain.wclGlue = read<void *>(chain.glueIvars, SequoiaPeerAbi::kGlueWclGlueSlot);
+    if (!chain.wclGlue || !kernelPointer(chain.wclGlue)) return false;
+    chain.wclIvars = read<void *>(chain.wclGlue, SequoiaPeerAbi::kFamilyIvars);
+    return chain.wclIvars && kernelPointer(chain.wclIvars);
+}
+
+// The full storage chain plus the bulletin board. A board walk that fails
+// here leaves the caller the interface-queue fallback, exactly as an
+// unresolvable chain always did.
+bool resolveWclBoard(void *interface, WclStorageChain &chain, void *&board)
+{
+    board = nullptr;
+    if (!resolveWclStorage(interface, chain)) return false;
+    board = read<void *>(chain.wclIvars, SequoiaPeerAbi::kWclGlueBoardSlot);
+    if (!board || !kernelPointer(board)) return false;
+    return wclBoardClassCheck(chain, board);
+}
+
+} // namespace
+
 // The interface's glue ivar at +0xd8. IO80211SkywalkInterface::postMessageInternal
 // loads it and jumps to IO80211Glue::routeEventToWcl when it is set, and falls back to
 // postMessageSync when it is null - so a null glue would mean no driver event reaches
@@ -40,28 +194,31 @@ using SequoiaInterfaceLifecycle::read;
 void *itlwmInterfaceGlue(void *interface)
 {
     if (!interface) return nullptr;
-    void *ivars = read<void *>(interface, 0x110);
+    void *ivars = interfaceIvars(interface);
     if (!ivars) return nullptr;
-    return read<void *>(ivars, 0xd8);
+    return read<void *>(ivars, SequoiaPeerAbi::kIvarsGlueSlot);
 }
 
 // Install the glue the family's own factory builds, at the ivar its own
 // postMessageInternal reads. Returns through installed the glue that is in place
-// afterwards, whether it was already there or was just created.
+// afterwards, whether it was already there or was just created. A slot that
+// holds a value outside the kernel map is treated as empty rather than
+// trusted, so a shifted layout gets a rebuilt glue instead of a wild pointer.
 bool itlwmEnsureInterfaceGlue(void *interface, void **installed)
 {
     if (installed) *installed = nullptr;
     if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
+    void *ivars = interfaceIvars(interface);
     if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (glue) {
+    void *glue = read<void *>(ivars, SequoiaPeerAbi::kIvarsGlueSlot);
+    if (glue && kernelPointer(glue)) {
         if (installed) *installed = glue;
         return true;
     }
     glue = io80211GlueWithInterface(interface);
     if (!glue) return false;
-    *reinterpret_cast<void **>(static_cast<uint8_t *>(ivars) + 0xd8) = glue;
+    *reinterpret_cast<void **>(static_cast<uint8_t *>(ivars) +
+        SequoiaPeerAbi::kIvarsGlueSlot) = glue;
     if (installed) *installed = glue;
     return true;
 }
@@ -80,12 +237,16 @@ bool itlwmRebuildInterfaceGlue(void *interface, void **installed)
 {
     if (installed) *installed = nullptr;
     if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
+    void *ivars = interfaceIvars(interface);
     if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (glue) {
-        void *glueIvars = read<void *>(glue, 0x18);
-        void *bulletin = glueIvars ? read<void *>(glueIvars, 0x8) : nullptr;
+    void *glue = read<void *>(ivars, SequoiaPeerAbi::kIvarsGlueSlot);
+    if (glue && kernelPointer(glue)) {
+        // The r214-era board-presence check reads glue ivars+0x8 - the slot
+        // the delivery chain calls object A - not the storage chain's board.
+        // Keep that exact slot: it is the condition this rebuild was tuned
+        // against, and its provenance is the r214/r215 record below.
+        void *glueIvars = read<void *>(glue, SequoiaPeerAbi::kFamilyIvars);
+        void *bulletin = glueIvars ? read<void *>(glueIvars, SequoiaPeerAbi::kGlueDeliveryA) : nullptr;
         if (bulletin) {
             if (installed) *installed = glue;
             return true;
@@ -93,12 +254,14 @@ bool itlwmRebuildInterfaceGlue(void *interface, void **installed)
         // The board is still null: the base init failed during the pre-registration
         // attempt. Detach the broken glue and build a fresh one now that the
         // controller service is visible.
-        *reinterpret_cast<void **>(static_cast<uint8_t *>(ivars) + 0xd8) = nullptr;
+        *reinterpret_cast<void **>(static_cast<uint8_t *>(ivars) +
+            SequoiaPeerAbi::kIvarsGlueSlot) = nullptr;
         reinterpret_cast<OSObject *>(glue)->release();
     }
     glue = io80211GlueWithInterface(interface);
     if (!glue) return false;
-    *reinterpret_cast<void **>(static_cast<uint8_t *>(ivars) + 0xd8) = glue;
+    *reinterpret_cast<void **>(static_cast<uint8_t *>(ivars) +
+        SequoiaPeerAbi::kIvarsGlueSlot) = glue;
     if (installed) *installed = glue;
     return true;
 }
@@ -135,23 +298,13 @@ bool itlwmGlueBulletinBoardCorrect(void *interface, void **board, uint8_t *bytes
 {
     if (board) *board = nullptr;
     if (bytes && len) memset(bytes, 0, len);
-    if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
-    if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return false;
-    void *glueIvars = read<void *>(glue, 0x18);
-    if (!glueIvars) return false;
-    void *wclGlue = read<void *>(glueIvars, 0x18);   // WCLGlue lives here, not +0x8
-    if (!wclGlue) return false;
-    void *wclIvars = read<void *>(wclGlue, 0x18);
-    if (!wclIvars) return false;
-    void *bulletin = read<void *>(wclIvars, 0x8);
+    WclStorageChain chain;
+    void *bulletin = nullptr;
+    if (!resolveWclBoard(interface, chain, bulletin)) return false;
     if (board) *board = bulletin;
-    if (!bulletin) return false;
-    uint8_t *bitmaps = read<uint8_t *>(bulletin, 0x10);
+    uint8_t *bitmaps = read<uint8_t *>(bulletin, SequoiaPeerAbi::kBoardIvars);
     if (!bitmaps) return false;
-    if (bytes && len) memcpy(bytes, bitmaps + 0x8d0, len);
+    if (bytes && len) memcpy(bytes, bitmaps + SequoiaPeerAbi::kBoardScanBitmap, len);
     return true;
 }
 
@@ -164,23 +317,14 @@ bool itlwmReadWclControllerChain(void *interface, void **controller, void **scan
 {
     if (controller) *controller = nullptr;
     if (scanManager) *scanManager = nullptr;
-    if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
-    if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return false;
-    void *glueIvars = read<void *>(glue, 0x18);
-    if (!glueIvars) return false;
-    void *wclGlue = read<void *>(glueIvars, 0x18);
-    if (!wclGlue) return false;
-    void *wclIvars = read<void *>(wclGlue, 0x18);
-    if (!wclIvars) return false;
-    void *ctrl = read<void *>(wclIvars, 0x0);
+    WclStorageChain chain;
+    if (!resolveWclStorage(interface, chain)) return false;
+    void *ctrl = read<void *>(chain.wclIvars, SequoiaPeerAbi::kWclGlueCtrlSlot);
     if (controller) *controller = ctrl;
     if (!ctrl) return false;
-    void *ctrlIvars = read<void *>(ctrl, 0x10);
+    void *ctrlIvars = read<void *>(ctrl, SequoiaPeerAbi::kWclCtrlIvars);
     if (!ctrlIvars) return false;
-    void *scan = read<void *>(ctrlIvars, 0x28);
+    void *scan = read<void *>(ctrlIvars, SequoiaPeerAbi::kWclCtrlScanManager);
     if (scanManager) *scanManager = scan;
     return scan != nullptr;
 }
@@ -201,19 +345,19 @@ bool itlwmReadWclCacheQueueCount(void *interface, uint64_t *count, void **cacheS
     if (queue) *queue = nullptr;
     void *scanManager = nullptr;
     if (!itlwmReadWclControllerChain(interface, nullptr, &scanManager)) return false;
-    void *hop = read<void *>(scanManager, 0x20);
+    void *hop = read<void *>(scanManager, SequoiaPeerAbi::kScanCacheHop);
     if (!hop) return false;
-    void *store = read<void *>(hop, 0x68);
+    void *store = read<void *>(hop, SequoiaPeerAbi::kScanCacheStore);
     if (cacheStore) *cacheStore = store;
     if (!store) return false;
-    void *inner = read<void *>(store, 0x10);
+    void *inner = read<void *>(store, SequoiaPeerAbi::kScanCacheQueue);
     if (!inner) return false;
     void *scanQueue = read<void *>(inner, 0x00);
     if (queue) *queue = scanQueue;
     if (!scanQueue) return false;
-    void *storage = read<void *>(scanQueue, 0x10);
+    void *storage = read<void *>(scanQueue, SequoiaPeerAbi::kQueueStorage);
     if (!storage) return false;
-    if (count) *count = read<uint32_t>(storage, 0x08);
+    if (count) *count = read<uint32_t>(storage, SequoiaPeerAbi::kQueueCount);
     return true;
 }
 
@@ -253,21 +397,11 @@ bool itlwmPostWclScanResult(void *interface, uint32_t msgId, void *bytes, size_t
                              uint32_t *lastResult)
 {
     if (lastResult) *lastResult = UINT32_MAX;
-    if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
-    if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return false;
-    void *glueIvars = read<void *>(glue, 0x18);
-    if (!glueIvars) return false;
-    void *wclGlue = read<void *>(glueIvars, 0x18);
-    if (!wclGlue) return false;
-    void *wclIvars = read<void *>(wclGlue, 0x18);
-    if (!wclIvars) return false;
-    void *board = read<void *>(wclIvars, 0x8);
-    if (!board) return false;
+    WclStorageChain chain;
+    void *board = nullptr;
+    if (!resolveWclBoard(interface, chain, board)) return false;
     ItlwmBulletinBoardMessage message = {};
-    message.msgIndex = (msgId << 16) | 2;  // scan family: msgType 2
+    message.msgIndex = (msgId << 16) | SequoiaWCL::kScanResultMsgType;
     message.filler = 0xAAAAAAAAu;
     message.length = size;
     message.data = bytes;
@@ -275,7 +409,8 @@ bool itlwmPostWclScanResult(void *interface, uint32_t msgId, void *bytes, size_t
     // return, which routeMsg fills with the first non-zero handler result. False
     // is reserved for an unresolvable chain, so the caller can fall back to the
     // interface queue only when nothing was actually delivered.
-    if (lastResult) *lastResult = itlwmWclBoardSendMessage(board, 12 /* manager id */, &message);
+    if (lastResult) *lastResult = itlwmWclBoardSendMessage(board,
+        SequoiaPeerAbi::kBoardManagerRoute, &message);
     return true;
 }
 
@@ -285,22 +420,17 @@ bool itlwmPostWclScanResult(void *interface, uint32_t msgId, void *bytes, size_t
 // enable them directly on the board to unblock the result delivery.
 bool itlwmEnableScanMessages(void *interface)
 {
-    if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
-    if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return false;
-    void *glueIvars = read<void *>(glue, 0x18);
-    if (!glueIvars) return false;
-    void *wclGlue = read<void *>(glueIvars, 0x18);
-    if (!wclGlue) return false;
-    void *wclIvars = read<void *>(wclGlue, 0x18);
-    if (!wclIvars) return false;
-    void *bulletin = read<void *>(wclIvars, 0x8);
-    if (!bulletin) return false;
-    const uint32_t scanIndexes[] = {0xc90002u, 0xcd0002u, 0xce0002u, 0xed0002u};
+    WclStorageChain chain;
+    void *bulletin = nullptr;
+    if (!resolveWclBoard(interface, chain, bulletin)) return false;
+    const uint32_t scanIndexes[] = {
+        (SequoiaWCL::kBeaconMessage << 16) | SequoiaWCL::kScanResultMsgType,
+        (SequoiaPeerAbi::kScanResultFanoutMessage << 16) | SequoiaWCL::kScanResultMsgType,
+        (SequoiaWCL::kScanResultMessage << 16) | SequoiaWCL::kScanResultMsgType,
+        (SequoiaWCL::kScanCompleteMessage << 16) | SequoiaWCL::kScanResultMsgType,
+    };
     for (uint32_t idx : scanIndexes)
-        itlwmSetMessageEnable(bulletin, 6 /* scan manager */, idx, true);
+        itlwmSetMessageEnable(bulletin, SequoiaPeerAbi::kBoardManagerScan, idx, true);
     return true;
 }
 
@@ -322,16 +452,16 @@ bool itlwmDumpScanManagerHandlers(void *interface, uint64_t *count,
     void *ctrl = nullptr, *scan = nullptr;
     if (!itlwmReadWclControllerChain(interface, &ctrl, &scan)) return false;
     // WCLScanManager inherits WCLFsmManager; the FSM ivars live at +0x18.
-    void *fsmIvars = read<void *>(scan, 0x18);
+    void *fsmIvars = read<void *>(scan, SequoiaPeerAbi::kFsmIvars);
     if (!fsmIvars) return false;
-    uint64_t n = read<uint64_t>(fsmIvars, 0x18);
+    uint64_t n = read<uint64_t>(fsmIvars, SequoiaPeerAbi::kFsmCountSlot);
     if (count) *count = n;
-    void *table = read<void *>(fsmIvars, 0x10);
+    void *table = read<void *>(fsmIvars, SequoiaPeerAbi::kFsmTableSlot);
     if (!table) return false;
     size_t lim = n < static_cast<uint64_t>(maxEntries) ? static_cast<size_t>(n) : maxEntries;
     for (size_t i = 0; i < lim; ++i) {
-        if (indexes) indexes[i] = read<uint32_t>(table, i * 0x18);
-        if (handlers) handlers[i] = read<void *>(table, i * 0x18 + 0x8);
+        if (indexes) indexes[i] = read<uint32_t>(table, i * SequoiaPeerAbi::kFsmEntrySize);
+        if (handlers) handlers[i] = read<void *>(table, i * SequoiaPeerAbi::kFsmEntrySize + 0x8);
     }
     return true;
 }
@@ -473,25 +603,19 @@ void itlwmReadScanBitmapCorrect(void *interface, uint16_t *out, unsigned *blockF
     if (out) for (int i = 0; i < 4; ++i) out[i] = 0;
     if (blockFlag) *blockFlag = 0;
     if (!interface) return;
-    void *ivars = read<void *>(interface, 0x110);
-    if (!ivars) return;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return;
-    void *glueIvars = read<void *>(glue, 0x18);
-    if (!glueIvars) return;
-    void *wclGlue = read<void *>(glueIvars, 0x18);
-    if (!wclGlue) return;
-    void *wclIvars = read<void *>(wclGlue, 0x18);
-    if (!wclIvars) return;
-    void *bulletin = read<void *>(wclIvars, 0x8);
-    if (!bulletin) return;
-    void *bivars = read<void *>(bulletin, 0x10);
+    WclStorageChain chain;
+    void *bulletin = nullptr;
+    if (!resolveWclBoard(interface, chain, bulletin)) return;
+    void *bivars = read<void *>(bulletin, SequoiaPeerAbi::kBoardIvars);
     if (!bivars) return;
-    if (blockFlag) *blockFlag = read<uint8_t>(bivars, 0xc00);
+    if (blockFlag) *blockFlag = read<uint8_t>(bivars, SequoiaPeerAbi::kBoardBlockFlag);
     if (out) {
-        const uint32_t ids[] = {0xc9, 0xcd, 0xce, 0xed};
+        const uint32_t ids[] = {SequoiaWCL::kBeaconMessage,
+                                SequoiaPeerAbi::kScanResultFanoutMessage,
+                                SequoiaWCL::kScanResultMessage,
+                                SequoiaWCL::kScanCompleteMessage};
         for (int i = 0; i < 4; ++i)
-            out[i] = read<uint16_t>(bivars, 0x8d0 + ids[i] * 2);
+            out[i] = read<uint16_t>(bivars, SequoiaPeerAbi::kBoardScanBitmap + ids[i] * 2);
     }
 }
 
@@ -505,13 +629,13 @@ extern "C" void itlwm_glue_process_pending_events_source(void *glue, void *workQ
 bool itlwmGlueScheduleEvents(void *interface)
 {
     if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
+    void *ivars = interfaceIvars(interface);
     if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return false;
-    void *glueIvars = read<void *>(glue, 0x18);
+    void *glue = read<void *>(ivars, SequoiaPeerAbi::kIvarsGlueSlot);
+    if (!glue || !kernelPointer(glue)) return false;
+    void *glueIvars = read<void *>(glue, SequoiaPeerAbi::kFamilyIvars);
     if (!glueIvars) return false;
-    void *workQueue = read<void *>(glueIvars, 0x38);
+    void *workQueue = read<void *>(glueIvars, SequoiaPeerAbi::kGlueWorkQueueSlot);
     if (!workQueue) return false;
     itlwm_glue_process_pending_events_source(glue, workQueue);
     return true;
@@ -526,14 +650,17 @@ bool itlwmGlueWakeState(void *interface, void **gate, unsigned *wake)
     if (gate) *gate = nullptr;
     if (wake) *wake = 0;
     if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
+    void *ivars = interfaceIvars(interface);
     if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return false;
-    void *gateway = read<void *>(glue, 0x18);
+    void *glue = read<void *>(ivars, SequoiaPeerAbi::kIvarsGlueSlot);
+    if (!glue || !kernelPointer(glue)) return false;
+    // The gate IS the glue ivars struct (the storage chain's glueIvars, seen
+    // here through routeEventToWcl's eyes): routeEventToWcl locks it and sets
+    // its wake byte only when that byte was still clear.
+    void *gateway = read<void *>(glue, SequoiaPeerAbi::kFamilyIvars);
     if (gate) *gate = gateway;
     if (!gateway) return false;
-    if (wake) *wake = read<uint8_t>(gateway, 0x30);
+    if (wake) *wake = read<uint8_t>(gateway, SequoiaPeerAbi::kGlueEventGateWake);
     return true;
 }
 
@@ -557,12 +684,12 @@ bool itlwmControllerDeliveryChain(void *controller, void **first, void **second)
     if (first) *first = nullptr;
     if (second) *second = nullptr;
     if (!controller) return false;
-    void *ivars = read<void *>(controller, 0x110);
-    if (!ivars) return false;
-    void *gate = read<void *>(ivars, 0x10);
+    void *ivars = read<void *>(controller, SequoiaPeerAbi::kOurControllerIvars);
+    if (!ivars || !kernelPointer(ivars)) return false;
+    void *gate = read<void *>(ivars, SequoiaPeerAbi::kOurControllerGate);
     if (first) *first = gate;
     if (!gate) return false;
-    void *delivery = read<void *>(gate, 0xb08);
+    void *delivery = read<void *>(gate, SequoiaPeerAbi::kDeliveryObjectSlot);
     if (second) *second = delivery;
     return delivery != nullptr;
 }
@@ -582,27 +709,44 @@ bool itlwmControllerDeliveryChain(void *controller, void **first, void **second)
 // scanupdateHandler never runs. Reading this chain separates "the delivery object
 // was never built" from "it was built but drops the message", which is the
 // difference between fixing the glue wiring and fixing the WCL callback array.
+// The delivery chain receiveMessageInternal walks, up to its WCLGlue. Writes
+// each hop it resolved before stopping, so the diagnostic readers can publish
+// the exact point a delivery stopped resolving.
+static bool resolveWclDelivery(void *interface, void *&objectA, void *&objectB,
+                               void *&wclGlue)
+{
+    objectA = objectB = wclGlue = nullptr;
+    if (!interface) return false;
+    void *ivars = interfaceIvars(interface);
+    if (!ivars) return false;
+    void *glue = read<void *>(ivars, SequoiaPeerAbi::kIvarsGlueSlot);
+    if (!glue || !kernelPointer(glue)) return false;
+    void *glueIvars = read<void *>(glue, SequoiaPeerAbi::kFamilyIvars);
+    if (!glueIvars) return false;
+    objectA = read<void *>(glueIvars, SequoiaPeerAbi::kGlueDeliveryA);
+    if (!objectA) return false;
+    objectB = read<void *>(objectA, SequoiaPeerAbi::kDeliveryHopB);
+    if (!objectB) return false;
+    wclGlue = read<void *>(objectB, SequoiaPeerAbi::kDeliveryWclGlue);
+    return wclGlue != nullptr;
+}
+
 bool itlwmGlueDeliveryChain(void *interface, void **objectA, void **objectB, void **delivery)
 {
     if (objectA) *objectA = nullptr;
     if (objectB) *objectB = nullptr;
     if (delivery) *delivery = nullptr;
-    if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
-    if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return false;
-    void *glueIvars = read<void *>(glue, 0x18);
-    if (!glueIvars) return false;
-    void *a = read<void *>(glueIvars, 0x8);
+    void *a = nullptr, *b = nullptr, *wclGlue = nullptr;
+    if (!resolveWclDelivery(interface, a, b, wclGlue)) {
+        if (objectA) *objectA = a;
+        if (objectB) *objectB = b;
+        if (delivery) *delivery = wclGlue;
+        return false;
+    }
     if (objectA) *objectA = a;
-    if (!a) return false;
-    void *b = read<void *>(a, 0x120);
     if (objectB) *objectB = b;
-    if (!b) return false;
-    void *del = read<void *>(b, 0xb08);
-    if (delivery) *delivery = del;
-    return del != nullptr;
+    if (delivery) *delivery = wclGlue;
+    return true;
 }
 
 // One hop past itlwmGlueDeliveryChain. The delivery object is a WCLGlue whose
@@ -617,28 +761,39 @@ bool itlwmGlueMsgBitmap(void *interface, void **board, uint8_t *bytes, size_t le
 {
     if (board) *board = nullptr;
     if (bytes && len) memset(bytes, 0, len);
-    if (!interface) return false;
-    void *ivars = read<void *>(interface, 0x110);
-    if (!ivars) return false;
-    void *glue = read<void *>(ivars, 0xd8);
-    if (!glue) return false;
-    void *glueIvars = read<void *>(glue, 0x18);
-    if (!glueIvars) return false;
-    void *a = read<void *>(glueIvars, 0x8);
-    if (!a) return false;
-    void *b = read<void *>(a, 0x120);
-    if (!b) return false;
-    void *wclGlue = read<void *>(b, 0xb08);
-    if (!wclGlue) return false;
-    void *wclIvars = read<void *>(wclGlue, 0x18);
+    void *a = nullptr, *b = nullptr, *wclGlue = nullptr;
+    if (!resolveWclDelivery(interface, a, b, wclGlue)) return false;
+    void *wclIvars = read<void *>(wclGlue, SequoiaPeerAbi::kFamilyIvars);
     if (!wclIvars) return false;
-    void *bulletin = read<void *>(wclIvars, 0x8);
+    void *bulletin = read<void *>(wclIvars, SequoiaPeerAbi::kWclGlueBoardSlot);
     if (board) *board = bulletin;
     if (!bulletin) return false;
-    uint8_t *bitmaps = read<uint8_t *>(bulletin, 0x10);
+    uint8_t *bitmaps = read<uint8_t *>(bulletin, SequoiaPeerAbi::kBoardIvars);
     if (!bitmaps) return false;
-    if (bytes && len) memcpy(bytes, bitmaps + 0x8d0, len);
+    if (bytes && len) memcpy(bytes, bitmaps + SequoiaPeerAbi::kBoardScanBitmap, len);
     return true;
+}
+
+// The ABI gate's current verdict for one interface's storage chain. Running
+// it walks the chain (updating the cached class check exactly as a delivery
+// would); readers publish the result next to the other boot diagnostics.
+WclAbiVerdict itlwmWclAbiVerdict(void *interface)
+{
+    WclStorageChain chain;
+    void *board = nullptr;
+    resolveWclBoard(interface, chain, board);
+    return gWclAbiVerdict;
+}
+
+const char *itlwmWclAbiVerdictName(WclAbiVerdict verdict)
+{
+    switch (verdict) {
+        case WclAbiVerdict::Ok: return "ok";
+        case WclAbiVerdict::WrongClass: return "wrong-class";
+        case WclAbiVerdict::Unresolved: return "unresolved";
+        case WclAbiVerdict::NotChecked: break;
+    }
+    return "not-checked";
 }
 
 OSObject *itlwmCreateFaultAdapter(IOService *stream, IOWorkLoop *loop, OSObject **reporter)
@@ -686,7 +841,8 @@ static void number(OSDictionary *dict, const char *key, uint64_t value)
 bool itlwmFaultAdapterInstalled(IOService *controller, OSObject *adapter)
 {
     return controller && adapter && adapter->metaCast("IO80211FaultReporter") &&
-        read<void *>(read<void *>(controller, 0x120), 0x58) == adapter;
+        read<void *>(read<void *>(controller, SequoiaPeerAbi::kFamilyControllerIvars),
+                     SequoiaPeerAbi::kFaultAdapterSlot) == adapter;
 }
 
 static void word(OSDictionary *dict, const char *key, const char *value)
@@ -738,9 +894,9 @@ void *itlwmCreatePeerWithDiagnostics(IOService *interface, IOService *controller
                                    IOService *evidence, IOWorkLoop *loop)
 {
     if (!interface || !controller || !evidence || !loop) return nullptr;
-    const void *iface = read<void *>(interface, 0x110);
-    const void *ctrl = read<void *>(controller, 0x120);
-    auto *adapter = read<OSObject *>(ctrl, 0x58);
+    const void *iface = read<void *>(interface, SequoiaPeerAbi::kInterfaceIvars);
+    const void *ctrl = read<void *>(controller, SequoiaPeerAbi::kFamilyControllerIvars);
+    auto *adapter = read<OSObject *>(ctrl, SequoiaPeerAbi::kFaultAdapterSlot);
     auto *history = OSArray::withCapacity(1);
     auto *preflight = OSDictionary::withCapacity(16);
     if (!history || !preflight) {

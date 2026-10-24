@@ -1,5 +1,6 @@
 // Sequoia owns registration through system APIs; the Sonoma compatibility
 // pointer substitution above is deliberately not compiled into this target.
+#include "SequoiaPeerFactory.hpp"
 void AirportItlwm::publishNativeRegistrationDiagnostics(const char *phase)
 {
 #if SEQUOIA_DIAGNOSTICS
@@ -912,8 +913,6 @@ void AirportItlwm::nativeBsdProbeAction(OSObject *owner, IOTimerEventSource *tim
     auto *self = static_cast<AirportItlwm *>(owner);
     if (!self || timer != self->nativeBsdProbeTimer || !self->nativeBsdProbeSeq) return;
     IOService *provider = self->getProvider();
-    // Same block-scope declaration the other probes use.
-    void itlwmPublishBsdClientProbeSample(IOService *target, void *interface, unsigned seq);
     if (provider && self->fNetIf)
         itlwmPublishBsdClientProbeSample(provider, self->fNetIf, self->nativeBsdProbeSeq);
     constexpr unsigned count = sizeof(kNativeBsdProbeOffsets) / sizeof(kNativeBsdProbeOffsets[0]);
@@ -1240,9 +1239,6 @@ bool AirportItlwm::startNative(IOService *provider)
     // interface's name-write state. Diagnostic only: bounded, allocation-free,
     // and it never fails the boot.
     if (nativeSkywalkBSDOwner) {
-        void itlwmBsdBurstReset();
-        bool itlwmBsdBurstSample(IOService *target, void *interface, unsigned iteration);
-        void itlwmBsdBurstFinalize(IOService *target);
         itlwmBsdBurstReset();
         constexpr unsigned kBurstSamples = 3000;
         for (unsigned burst = 0; burst < kBurstSamples; ++burst) {
@@ -1331,7 +1327,6 @@ bool AirportItlwm::startNative(IOService *provider)
     // so read it now, and build the glue with the family's own factory if the family
     // left it empty.
     {
-        bool itlwmEnsureInterfaceGlue(void *interface, void **installed);
         void *interfaceGlue = nullptr;
         itlwmEnsureInterfaceGlue(fNetIf, &interfaceGlue);
         // r223: install the direct WCL board route for scan deliveries. The
@@ -1348,14 +1343,18 @@ bool AirportItlwm::startNative(IOService *provider)
         // reported ItlwmNativeWclDirectPosts=0 with 124 queue posts).
         // itlwm_scan_post=queue keeps the old interface route for an A/B boot
         // without a rebuild; anything else (including no argument) installs it.
-        bool itlwmPostWclScanResult(void *interface, uint32_t msgId, void *bytes,
-                                    size_t size, uint32_t *result);
         void itlwmSetWclDirectPostRoute(SequoiaWCL::WclDirectPostRoute);
         char postRoute[8] = {};
         const bool directPosts = !PE_parse_boot_argn("itlwm_scan_post", postRoute, sizeof(postRoute)) ||
                                  strcmp(postRoute, "queue") != 0;
         if (directPosts) itlwmSetWclDirectPostRoute(itlwmPostWclScanResult);
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeWclDirectRouteInstalled", directPosts);
+        // The one-shot ABI gate the chain resolvers run: publish the verdict
+        // the direct route's chain earned, so a relaxed kernel match that
+        // shifted the private layout shows up as wrong-class here instead of
+        // as a panic on the first delivered scan result.
+        ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeWclAbiVerdict",
+                              itlwmWclAbiVerdictName(itlwmWclAbiVerdict(fNetIf)));
         ITLWM_LOG("itlwm-native: interface glue ivar+0xd8 = %p\n", interfaceGlue);
         // Publish it too: the driver's IOLog output does not reach the unified log,
         // so a property is what makes this readable after a boot.
@@ -1363,7 +1362,6 @@ bool AirportItlwm::startNative(IOService *provider)
                               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(interfaceGlue)), 64);
         // The controller half of the same question: the two loads the family's
         // postMessage performs before its tail jump into routeEventToWcl.
-        bool itlwmControllerDeliveryChain(void *controller, void **first, void **second);
         void *chainGate = nullptr;
         void *chainDelivery = nullptr;
         itlwmControllerDeliveryChain(this, &chainGate, &chainDelivery);
@@ -1375,7 +1373,6 @@ bool AirportItlwm::startNative(IOService *provider)
         // The event queue's own state: routeEventToWcl sets gate+0x30 when it
         // queues an event and the worker clears it when it drains. A byte stuck at
         // one means events are being queued and never consumed.
-        bool itlwmGlueWakeState(void *interface, void **gate, unsigned *wake);
         void *eventGate = nullptr;
         unsigned wakeByte = 0;
         itlwmGlueWakeState(fNetIf, &eventGate, &wakeByte);
@@ -1386,7 +1383,6 @@ bool AirportItlwm::startNative(IOService *provider)
         // +0xb08. The last value is the WCL delivery object each queued event is
         // handed to; a zero there means every event is dropped inside the glue,
         // after the queue but before any scan callback.
-        bool itlwmGlueDeliveryChain(void *interface, void **objectA, void **objectB, void **delivery);
         void *glueObjectA = nullptr;
         void *glueObjectB = nullptr;
         void *glueDelivery = nullptr;
@@ -1404,7 +1400,6 @@ bool AirportItlwm::startNative(IOService *provider)
         // WCLBulletinBoard::sendMessage. msgType 2 (scan results) lives at +0x8d0;
         // the scan-result ids 0xc9/0xcd/0xce/0xed are bits in bytes 25..29. A zero
         // there means the results are dropped before scanupdateHandler runs.
-        bool itlwmGlueMsgBitmap(void *interface, void **board, uint8_t *bytes, size_t len);
         void *bulletinBoard = nullptr;
         uint8_t bitmapBytes[32] = {};
         const bool bitmapOk = itlwmGlueMsgBitmap(fNetIf, &bulletinBoard, bitmapBytes, sizeof(bitmapBytes));
@@ -1422,7 +1417,6 @@ bool AirportItlwm::startNative(IOService *provider)
         // Read the base-class init pointer WCLBulletinBoard::initWithOptions calls
         // through the global vtable slot: it returns false and is why the board stays
         // null even after the post-registration rebuild.
-        void itlwmReadWclBulletinBoardBaseInit(uint64_t *table, uint64_t *slot98);
         uint64_t baseTable = 0, baseSlot98 = 0;
         itlwmReadWclBulletinBoardBaseInit(&baseTable, &baseSlot98);
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeBaseInitTable", baseTable, 64);
@@ -1434,7 +1428,6 @@ bool AirportItlwm::startNative(IOService *provider)
         // WCLBulletinBoard at WCLGlue ivars+0x8. The +0x8/+0x120/+0xb08 chain above
         // is the event-delivery path, not the board, so BulletinBoard=0 above may be
         // a false negative.
-        bool itlwmGlueBulletinBoardCorrect(void *interface, void **board, uint8_t *bytes, size_t len);
         void *boardCorrect = nullptr;
         uint8_t correctBytes[32] = {};
         const bool correctOk = itlwmGlueBulletinBoardCorrect(fNetIf, &boardCorrect, correctBytes, sizeof(correctBytes));
@@ -1450,7 +1443,6 @@ bool AirportItlwm::startNative(IOService *provider)
               static_cast<unsigned long long>(correctScanBits));
         // Read the WCL controller chain to see where the FSM's message-enable loop
         // stopped, then enable the scan-result messages directly if they are still off.
-        bool itlwmReadWclControllerChain(void *interface, void **controller, void **scanManager);
         void *wclController = nullptr, *wclScanManager = nullptr;
         const bool chainOk = itlwmReadWclControllerChain(fNetIf, &wclController, &wclScanManager);
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeWclController",
@@ -1458,13 +1450,11 @@ bool AirportItlwm::startNative(IOService *provider)
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeWclScanManager",
                               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(wclScanManager)), 64);
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeWclChainOk", chainOk ? 1 : 0, 32);
-        bool itlwmEnableScanMessages(void *interface);
         const bool enabled = itlwmEnableScanMessages(fNetIf);
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeScanMessagesEnabled", enabled ? 1 : 0, 32);
         ITLWM_LOG("itlwm-native: wcl controller=%p scanManager=%p chain=%d enable=%d\n",
               wclController, wclScanManager, chainOk ? 1 : 0, enabled ? 1 : 0);
         // Read the real scan-message bitmap words (2-byte stride) and the block flag.
-        void itlwmReadScanBitmapCorrect(void *interface, uint16_t *out, unsigned *blockFlag);
         uint16_t scanBmp[4] = {};
         unsigned blockFlag = 0;
         itlwmReadScanBitmapCorrect(fNetIf, scanBmp, &blockFlag);
@@ -1479,8 +1469,6 @@ bool AirportItlwm::startNative(IOService *provider)
         // callMsgCallBack path resolves 0xc90002 (0xc9) / 0xce0002 (0xce) through
         // this table; if either is absent the scan-result message is dropped with
         // E00002BC, which is exactly the "FSM events 0" symptom.
-        bool itlwmDumpScanManagerHandlers(void *interface, uint64_t *count,
-                                          uint32_t *indexes, void **handlers, size_t maxEntries);
         uint64_t handlerCount = 0;
         uint32_t handlerIndexes[32] = {};
         void *handlerFns[32] = {};
@@ -1510,7 +1498,6 @@ bool AirportItlwm::startNative(IOService *provider)
         // the enqueue call site is right. +0x78 additionally decides whether an
         // accepted packet reaches the BSD stack instead of the KPipe path.
 #if SEQUOIA_DIAGNOSTICS
-        bool itlwmPublishQueueState(IOService *target, const char *prefix, void *queue);
         const bool txQueueReady =
             itlwmPublishQueueState(provider, "ItlwmNativeTxQueue", nativeRegistration.txQueue());
         const bool rxQueueReady =
@@ -1525,7 +1512,6 @@ bool AirportItlwm::startNative(IOService *provider)
         // nexus whose callbacks initialize the queues above. Publish what IOKit
         // attached to the interface and the client's own start state, so a boot
         // separates "no client was ever matched" from "the client ran and failed".
-        bool itlwmPublishInterfaceChildren(IOService *target, void *interface, unsigned *count);
         unsigned childCount = 0;
         const bool bsdClient = itlwmPublishInterfaceChildren(provider, fNetIf, &childCount);
         ITLWM_LOG("itlwm-native: interface children=%u bsdClient=%d\n",
@@ -1567,11 +1553,9 @@ bool AirportItlwm::startNative(IOService *provider)
     // scanupdateHandler. This second, post-registration attempt rebuilds only when
     // the board is still missing, and re-reads it so one boot shows the outcome.
     {
-        bool itlwmRebuildInterfaceGlue(void *interface, void **installed);
         void *rebuiltGlue = nullptr;
         itlwmRebuildInterfaceGlue(fNetIf, &rebuiltGlue);
         ITLWM_PUBLISH_DIAGNOSTIC(provider, "ItlwmNativeGlueRebuilt", rebuiltGlue ? 1 : 0, 32);
-        bool itlwmGlueMsgBitmap(void *interface, void **board, uint8_t *bytes, size_t len);
         void *board2 = nullptr;
         uint8_t bytes2[32] = {};
         itlwmGlueMsgBitmap(fNetIf, &board2, bytes2, sizeof(bytes2));

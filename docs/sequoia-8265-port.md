@@ -519,7 +519,7 @@ void AirportItlwm::publishNativeScanDiagnostics()
 
 ---
 
-## 七、commit 序列（47 个）
+## 七、commit 序列（55 个，截至 2026-10-24）
 
 | 阶段 | commit | 内容 |
 |---|---|---|
@@ -540,7 +540,10 @@ void AirportItlwm::publishNativeScanDiagnostics()
 | | `490be26` | 放行报 UMAC 扫描能力的固件 |
 | | `21c88ff` | ADD_STA 的期望跟随驱动的能力位 |
 | | `6e27de5` | 构建修正 |
-| **probe 布局** | `e93ba99` | probe request 按固件期望的布局重排 |
+| | `a1b8556` | 记录上一条命令被拒的原因与拒绝时的状态 |
+| **probe 布局** | `05ce3d5` | 扫描请求声明双频段，并报告请求实际携带的频段 |
+| | `960034f` | 构建修正：读 band flags 前先转型 scan request |
+| | `e93ba99` | probe request 按固件期望的布局重排 |
 | | `4fbdb15` | 速率集改成完整的 Rates IE |
 | **对照模式** | `5a45947` | 跑驱动自己的扫描请求 |
 | | `14a8643` | 跑 UMAC 扫描请求 |
@@ -562,8 +565,17 @@ void AirportItlwm::publishNativeScanDiagnostics()
 | | `ac8a72c` | ★ **开关移进函数内部**（之前包住调用点 → 把调用一起吞了）；加"只经宏可达=违规"检查 |
 | **收尾** | `3040ed9` | 把发布版并回主树（一棵源码，两种构建；探针 personality 恢复） |
 | | `820e721` | 探针 personality 回到树里（它们是量诊断的工具） |
-| | `78b344b` | 删掉与本移植无关的遗留文档：upstream README、fork 发布说明、issue 模板 |
-| | `50337c3` | 文档与脚本进树，树自包含；脚本不再写死绝对路径 |
+| | `fe17e5a` | 删掉与本移植无关的遗留文档：upstream README、fork 发布说明、issue 模板 |
+| | `f614bc7` | 文档与脚本进树，树自包含；脚本不再写死绝对路径 |
+| | `6b02401` | 文档里的 commit 计数刷新 |
+| | `b1b1ffa` | 仓库目录上移一级，抹掉机器自身的细节 |
+| | `0ea6538` | 编辑器私有状态不入库 |
+| | `b74614d` | 增加离线测试运行脚本（tools/run-tests.sh，能跑的跑、缺头的列出来跳过） |
+| **内核检查** | `e9047b7` | ★ **内核版本检查可按启动参数逐级放宽**（严格 → minor → major → off；默认仍是严格） |
+| | `e3ed580` | 放宽级别接进启动参数 `itlwm_kernel_check=`；生效级别发布为 `ItlwmNativeKernelMatchLevel` |
+| **睡眠唤醒** | `4f3416d` | 诊断：唤醒时报告是哪个守卫挡住了恢复（radio on 被谁拒绝） |
+| | `b19445d` | ★ **睡眠拆链后补报 WCL link-down**：睡眠发起的 leave 不发链路状态，WCL 以为还在线 → 唤醒后不再发起关联 |
+| | `722495d` | 唤醒路径报告三种结果（无事可做 / 已补报 / 补报失败）；实机一轮睡眠唤醒验证通过（见 §七·九·五） |
 
 ---
 

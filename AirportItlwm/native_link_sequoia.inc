@@ -1,6 +1,7 @@
 // Resolve the ifnet from its selected owner. Skywalk uses Apple's public
 // getBSDInterface API; the legacy mode uses our Ethernet child. Synchronize
 // running/MAC without changing the user's administrative IFF_UP flag.
+#include "SequoiaPeerFactory.hpp"
 IOReturn AirportItlwm::setNativeDataPath(bool enabled)
 {
     if (!_fWorkloop || !_fWorkloop->inGate()) return kIOReturnCannotLock;
@@ -18,7 +19,6 @@ IOReturn AirportItlwm::setNativeDataPath(bool enabled)
             // callbacks (nxp_qset_init/nxp_queue_init) would already have run if the
             // Skywalk BSD client owns the interface.
 #if SEQUOIA_DIAGNOSTICS
-            bool itlwmPublishQueueState(IOService *target, const char *prefix, void *queue);
             itlwmPublishQueueState(provider, "ItlwmNativeTxQueueLink", nativeRegistration.txQueue());
             itlwmPublishQueueState(provider, "ItlwmNativeRxQueueLink", nativeRegistration.rxQueue());
 #endif
@@ -27,7 +27,6 @@ IOReturn AirportItlwm::setNativeDataPath(bool enabled)
             // legitimately show no children; this later sample is the one that
             // decides whether the client exists and whether its start completed
             // (state bit 0) and left the service enabled (bit 1).
-            bool itlwmPublishInterfaceChildren(IOService *target, void *interface, unsigned *count);
             itlwmPublishInterfaceChildren(provider, fNetIf, nullptr);
         }
 #endif

@@ -17,7 +17,7 @@
 | 关联 / 认证 | ✅ `AssocStatus = 0`，`AuthStatus = 0` |
 | 上网 | ✅ 拿到 IP，默认路由走 en2 |
 
-**★ 完整移植记录（含每一轮实测数据、能力位、47 个 commit 的作用、踩过的坑清单）见 [`docs/sequoia-8265-port.md`](docs/sequoia-8265-port.md)。★★**
+**★ 完整移植记录（含每一轮实测数据、能力位、55 个 commit 的作用、踩过的坑清单）见 [`docs/sequoia-8265-port.md`](docs/sequoia-8265-port.md)。★★**
 
 **尚未验收**：睡眠唤醒、AP 失联恢复、持续双向流量、真实 PTK/GTK 换钥、长期稳定性。
 
@@ -53,7 +53,7 @@ git -C MacKernelSDK apply ../scripts/sequoia/MacKernelSDK-pexpert.patch
 /usr/bin/python3 scripts/sequoia/build.py
 ```
 
-源文件清单、SDK 绑定、编译输出、SHA256 和 UUID 写入 `build/Sequoia-0.1.0-beta.1-RELEASE/`。在 24H23 上自动跑 `kmutil libraries`；其他构建主机只编译。
+源文件清单、SDK 绑定、编译输出、SHA256 和 UUID 写入 `build/Sequoia-0.1.0-beta.1-RELEASE/`。在 24H32（`release.json` 的 `required_build`）上自动跑 `kmutil libraries`；其他构建主机只编译。
 
 **★ 离线测试（宿主可跑）：★**
 
@@ -122,7 +122,7 @@ Darwin Kernel Version 24.6.0: Sun Aug 23 20:30:56 PDT 2026; root:xnu-11417.140.6
 
 | | |
 |---|---|
-| [`docs/sequoia-8265-port.md`](docs/sequoia-8265-port.md) | **完整移植记录**：逐轮实测、能力位、47 个 commit、12 条关键知识 |
+| [`docs/sequoia-8265-port.md`](docs/sequoia-8265-port.md) | **完整移植记录**：逐轮实测、能力位、55 个 commit、12 条关键知识 |
 | [`docs/issue-1018-analysis.md`](docs/issue-1018-analysis.md) | 上游 issue #1009/#1018 的分析与本项目的结论 |
 | [`docs/sequoia-wifi-guide.md`](docs/sequoia-wifi-guide.md) | 面向普通用户：能不能用、怎么装、有什么坑 |
 | [`docs/code-quality-review.md`](docs/code-quality-review.md) | fork 的代码质量评估 |

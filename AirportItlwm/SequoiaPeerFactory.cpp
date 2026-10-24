@@ -253,10 +253,14 @@ bool itlwmRebuildInterfaceGlue(void *interface, void **installed)
         }
         // The board is still null: the base init failed during the pre-registration
         // attempt. Detach the broken glue and build a fresh one now that the
-        // controller service is visible.
+        // controller service is visible. Release only what the cast confirms
+        // is the family's glue: an in-range slot value of some other kind is
+        // not ours to free, so it is leaked and the fresh glue takes the slot.
+        auto *oldGlue = static_cast<OSObject *>(glue);
+        const bool releaseable = oldGlue->metaCast("IO80211Glue") != nullptr;
         *reinterpret_cast<void **>(static_cast<uint8_t *>(ivars) +
             SequoiaPeerAbi::kIvarsGlueSlot) = nullptr;
-        reinterpret_cast<OSObject *>(glue)->release();
+        if (releaseable) oldGlue->release();
     }
     glue = io80211GlueWithInterface(interface);
     if (!glue) return false;
@@ -317,13 +321,18 @@ bool itlwmReadWclControllerChain(void *interface, void **controller, void **scan
 {
     if (controller) *controller = nullptr;
     if (scanManager) *scanManager = nullptr;
+    // The scan readback runs on every scan request, so it carries the same
+    // protection as the delivery chain: a layout the ABI gate has already
+    // rejected is not walked at all, and every hop past the storage chain
+    // must land in the kernel map before anything dereferences it.
+    if (gWclAbiVerdict == WclAbiVerdict::WrongClass) return false;
     WclStorageChain chain;
     if (!resolveWclStorage(interface, chain)) return false;
     void *ctrl = read<void *>(chain.wclIvars, SequoiaPeerAbi::kWclGlueCtrlSlot);
     if (controller) *controller = ctrl;
-    if (!ctrl) return false;
+    if (!ctrl || !kernelPointer(ctrl)) return false;
     void *ctrlIvars = read<void *>(ctrl, SequoiaPeerAbi::kWclCtrlIvars);
-    if (!ctrlIvars) return false;
+    if (!ctrlIvars || !kernelPointer(ctrlIvars)) return false;
     void *scan = read<void *>(ctrlIvars, SequoiaPeerAbi::kWclCtrlScanManager);
     if (scanManager) *scanManager = scan;
     return scan != nullptr;
@@ -346,17 +355,17 @@ bool itlwmReadWclCacheQueueCount(void *interface, uint64_t *count, void **cacheS
     void *scanManager = nullptr;
     if (!itlwmReadWclControllerChain(interface, nullptr, &scanManager)) return false;
     void *hop = read<void *>(scanManager, SequoiaPeerAbi::kScanCacheHop);
-    if (!hop) return false;
+    if (!hop || !kernelPointer(hop)) return false;
     void *store = read<void *>(hop, SequoiaPeerAbi::kScanCacheStore);
     if (cacheStore) *cacheStore = store;
-    if (!store) return false;
+    if (!store || !kernelPointer(store)) return false;
     void *inner = read<void *>(store, SequoiaPeerAbi::kScanCacheQueue);
-    if (!inner) return false;
+    if (!inner || !kernelPointer(inner)) return false;
     void *scanQueue = read<void *>(inner, 0x00);
     if (queue) *queue = scanQueue;
-    if (!scanQueue) return false;
+    if (!scanQueue || !kernelPointer(scanQueue)) return false;
     void *storage = read<void *>(scanQueue, SequoiaPeerAbi::kQueueStorage);
-    if (!storage) return false;
+    if (!storage || !kernelPointer(storage)) return false;
     if (count) *count = read<uint32_t>(storage, SequoiaPeerAbi::kQueueCount);
     return true;
 }
